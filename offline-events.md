@@ -56,6 +56,18 @@ Cada evento contiene:
   - saltos de secuencia
   - reenvíos
 - El orden de procesamiento es **estricto por dispositivo**
+- No existe orden global entre dispositivos
+- Los conflictos inter-dispositivo se resuelven contra el estado actual
+- No existe “lock offline”
+
+---
+
+## 🧩 Identidad del dispositivo
+
+- `device_id` se registra y **no se recicla**
+- Revocar un dispositivo:
+  - invalida eventos futuros
+  - **no invalida eventos pasados**
 
 ---
 
@@ -146,6 +158,10 @@ Nunca se borra.
 - Cola transaccional
 - Confirmación explícita de sync
 - Soporte para reintentos manuales
+- La cola offline es **volátil por diseño**
+- La app **no garantiza** persistencia cross-install
+- Si el usuario reinstala, asume la pérdida de eventos
+- Esto debe informarse explícitamente en UX
 
 ---
 

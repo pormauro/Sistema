@@ -82,6 +82,17 @@ Motivo: la entidad puede haber sido eliminada virtualmente.
 
 ---
 
+## 🔐 Retención y acceso
+
+- Retención: **indefinida**
+- Acceso:
+  - solo admins
+  - solo lectura
+  - nunca editable
+- No visible para usuarios finales estándar
+
+---
+
 ## 🔍 Casos de uso cubiertos
 
 - Auditoría legal

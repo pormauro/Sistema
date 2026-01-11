@@ -166,6 +166,10 @@ Estados:
   - Se rechazan eventos inválidos
   - Se registran para auditoría
 - El servidor es la **fuente de verdad final**
+- No existe “rebobinado” de estado:
+  - El servidor evalúa cada evento contra el **estado actual**
+  - Un evento puede ser válido al crearse y **rechazado al sincronizar**
+  - Esto es esperado, no un error
 
 ---
 
@@ -176,6 +180,8 @@ Cada evento offline sincronizado:
 - Tiene timestamp de servidor
 - Guarda autor, contexto y entidad afectada
 - Nunca se elimina
+- Las reglas se evalúan con tiempo de servidor (primario)
+- El tiempo local es referencial y **no se corrige**
 
 ---
 
@@ -183,6 +189,7 @@ Cada evento offline sincronizado:
 
 - Offline-first mal aplicado **rompe sistemas**
 - No se admiten “excepciones por comodidad”
+- Offline **no garantiza finalización**, solo registro del intento
 - Si una acción afecta:
   - dinero
   - estructura

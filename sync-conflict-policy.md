@@ -147,6 +147,19 @@ La entidad referenciada ya no existe o cambió su contexto.
 
 ---
 
+## 🧭 Independencia de eventos
+
+- Los eventos se evalúan **de forma independiente**
+- Un rechazo **no bloquea** la cola
+- No existe rollback en cascada
+
+Ejemplo:
+- Evento 1 → rechazado
+- Evento 2 → válido  
+✔ Evento 2 se aplica
+
+---
+
 ## 🔁 Reintentos
 
 - ❌ No hay reintentos automáticos
@@ -183,6 +196,8 @@ El sistema debe:
 - Informar claramente el rechazo
 - Explicar el motivo en lenguaje operativo
 - Evitar mensajes genéricos
+- Mostrar eventos pendientes y rechazados
+- Incluir motivo claro y acción sugerida
 
 Ejemplo válido:
 > “El trabajo ya fue completado por otro usuario antes de sincronizar.”
