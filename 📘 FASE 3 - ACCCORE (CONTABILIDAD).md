@@ -468,6 +468,18 @@ Este motor es el **corazón de ACCCORE**.
 
 ---
 
+## **🧱 POLÍTICA DE MIGRACIÓN HISTÓRICA (EVENTO DE APERTURA)**
+
+ACCCORE **no reproduce historia**: arranca desde un evento de apertura que fija la frontera contable.
+
+### **Reglas duras**
+
+* La migración es **irreversible**: una vez ejecutado el evento de apertura, **no se revierte ni se rehace**.  
+* No se permite imputar eventos ERP **con fecha anterior al corte de migración**.  
+* Los documentos externos son **evidencia**, nunca **fuente de verdad contable interna**.  
+
+---
+
 ## **🧱 ENTRADA DEL MOTOR**
 
 ### **Eventos válidos**
@@ -1061,4 +1073,3 @@ Si no se puede trazar, el dato es inválido.
 * ❌ Ocultar movimientos  
 * ❌ Calcular balances desde ERP  
   ---
-
