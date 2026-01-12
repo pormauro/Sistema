@@ -147,6 +147,19 @@ La entidad referenciada ya no existe o cambió su contexto.
 
 ---
 
+## ✅ Evaluación independiente
+
+- Cada evento se evalúa **de forma independiente**
+- Un rechazo **no bloquea** la cola
+- No existe rollback en cascada
+
+Ejemplo:
+- Evento 1 → rechazado
+- Evento 2 → válido  
+✔ Evento 2 se aplica
+
+---
+
 ## 🔁 Reintentos
 
 - ❌ No hay reintentos automáticos
