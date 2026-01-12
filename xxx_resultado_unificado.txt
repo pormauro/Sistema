@@ -133,6 +133,34 @@ Interpreta hechos → genera asientos
 2️⃣ ERP Operativo (Negocio)
 3️⃣ Contabilidad (ACCCORE)
 
+---
+
+## **✅ CHECKLIST PRE‑IMPLEMENTACIÓN (GENERAL)**
+
+- [ ] Separación de capas: Core ≠ ACL ≠ ERP ≠ Contabilidad.
+- [ ] Roles gruesos limitan; no otorgan permisos finos.
+- [ ] Permisos finos explícitos; sin herencia implícita.
+- [ ] Hard‑deny por rol grueso aplicado antes de roles finos.
+- [ ] Auditoría obligatoria en cambios de estado, datos y denegaciones críticas.
+- [ ] Inmutabilidad: sin borrado físico; correcciones por eventos.
+- [ ] Regla 4equim vigente.
+- [ ] Toda escritura en transacción.
+- [ ] Contabilidad solo vía AccountingService.
+- [ ] `X-Company-Id` y membership activa siempre verificados.
+- [ ] Idempotencia cuando corresponda (offline/sync).
+- [ ] No lógica de permisos en UI.
+
+---
+
+## **📌 FASE Y ALCANCE (DECLARACIÓN OBLIGATORIA)**
+
+- Fase actual debe declararse explícitamente antes de implementar.
+- Core: identidad, seguridad, multiempresa, auditoría, archivos, 4equim. **Sin permisos finos ni negocio.**
+- ACL/RBAC: permisos atómicos, roles finos, overrides, auditoría de autorización. **Sin ERP ni contabilidad.**
+- ERP: eventos operativos inmutables y lifecycles. **Sin contabilidad ni permisos.**
+- Contabilidad: asientos solo desde eventos ERP vía AccountingService. **Nunca desde UI/endpoints directos.**
+
+
 ===== ARCHIVO: offline-events.md =====
 # Offline Events Queue — SISA
 
@@ -192,6 +220,7 @@ Cada evento contiene:
   - saltos de secuencia
   - reenvíos
 - El orden de procesamiento es **estricto por dispositivo**
+- No existe orden global entre dispositivos
 
 ---
 
@@ -260,6 +289,7 @@ Regla:
 - El evento **no se reintenta automáticamente**
 - Se registra el rechazo
 - Se notifica al usuario
+- Un rechazo **no bloquea** los eventos posteriores
 
 ---
 
@@ -273,6 +303,37 @@ Cada evento queda registrado con:
 - Motivo de rechazo (si aplica)
 
 Nunca se borra.
+
+---
+
+## 🆔 Identidad del dispositivo
+
+- `device_id` se registra y **no se recicla**
+- Revocar un dispositivo:
+  - invalida eventos futuros
+  - **no invalida eventos pasados**
+
+---
+
+## ♻️ Reinstalación de la app
+
+- La cola offline es **volátil por diseño**
+- No se garantiza persistencia cross-install
+- Si el usuario desinstala, **asume la pérdida** de eventos locales
+
+Esto debe informarse explícitamente en UX.
+
+---
+
+## ⏱️ Timestamps
+
+- Siempre se guardan:
+  - `local_timestamp`
+  - `server_timestamp`
+- Las reglas se evalúan contra:
+  - server time (primario)
+  - local time (referencial)
+- Nunca se “corrige” el tiempo local
 
 ---
 
@@ -290,6 +351,18 @@ Nunca se borra.
 - Eventos firmados con hash
 - Asociados a dispositivo y usuario
 - No se aceptan eventos sin autenticación previa válida
+
+---
+
+## 🧭 UX obligatoria
+
+La UI debe mostrar:
+- eventos pendientes
+- eventos rechazados
+- motivo claro
+- acción sugerida
+
+No mostrar esto = bug funcional.
 
 ---
 
@@ -674,11 +747,16 @@ Estados:
 - Todos los eventos offline:
   - Son **append-only**
   - Nunca pisan datos existentes
-  - Se validan contra el estado actual
+  - Se validan contra el **estado actual**
 - Conflictos:
   - Se rechazan eventos inválidos
   - Se registran para auditoría
 - El servidor es la **fuente de verdad final**
+
+**Regla explícita**
+- No existe “rebobinado” del estado para acomodar offline.
+- Un evento puede ser válido al generarse y **rechazado al sincronizar**.
+- Esto es **esperado**, no un error del sistema.
 
 ---
 
@@ -1059,6 +1137,19 @@ La entidad referenciada ya no existe o cambió su contexto.
 
 ---
 
+## ✅ Evaluación independiente
+
+- Cada evento se evalúa **de forma independiente**
+- Un rechazo **no bloquea** la cola
+- No existe rollback en cascada
+
+Ejemplo:
+- Evento 1 → rechazado
+- Evento 2 → válido  
+✔ Evento 2 se aplica
+
+---
+
 ## 🔁 Reintentos
 
 - ❌ No hay reintentos automáticos
@@ -1218,6 +1309,17 @@ Motivo: la entidad puede haber sido eliminada virtualmente.
 - No se reutiliza `event_id`
 - Un mismo evento genera **máximo un conflicto**
 - La ausencia de `company_id` invalida el registro
+
+---
+
+## 🔐 Retención y acceso
+
+- Retención: **indefinida**
+- Acceso:
+  - solo admins
+  - solo lectura
+  - nunca editable
+- No visible para usuarios finales estándar
 
 ---
 
@@ -1391,6 +1493,34 @@ Interpreta hechos → genera asientos
 2️⃣ ERP Operativo (Negocio)
 3️⃣ Contabilidad (ACCCORE)
 
+---
+
+## **✅ CHECKLIST PRE‑IMPLEMENTACIÓN (GENERAL)**
+
+- [ ] Separación de capas: Core ≠ ACL ≠ ERP ≠ Contabilidad.
+- [ ] Roles gruesos limitan; no otorgan permisos finos.
+- [ ] Permisos finos explícitos; sin herencia implícita.
+- [ ] Hard‑deny por rol grueso aplicado antes de roles finos.
+- [ ] Auditoría obligatoria en cambios de estado, datos y denegaciones críticas.
+- [ ] Inmutabilidad: sin borrado físico; correcciones por eventos.
+- [ ] Regla 4equim vigente.
+- [ ] Toda escritura en transacción.
+- [ ] Contabilidad solo vía AccountingService.
+- [ ] `X-Company-Id` y membership activa siempre verificados.
+- [ ] Idempotencia cuando corresponda (offline/sync).
+- [ ] No lógica de permisos en UI.
+
+---
+
+## **📌 FASE Y ALCANCE (DECLARACIÓN OBLIGATORIA)**
+
+- Fase actual debe declararse explícitamente antes de implementar.
+- Core: identidad, seguridad, multiempresa, auditoría, archivos, 4equim. **Sin permisos finos ni negocio.**
+- ACL/RBAC: permisos atómicos, roles finos, overrides, auditoría de autorización. **Sin ERP ni contabilidad.**
+- ERP: eventos operativos inmutables y lifecycles. **Sin contabilidad ni permisos.**
+- Contabilidad: asientos solo desde eventos ERP vía AccountingService. **Nunca desde UI/endpoints directos.**
+
+
 ===== ARCHIVO: offline-events.md =====
 # Offline Events Queue — SISA
 
@@ -1450,6 +1580,7 @@ Cada evento contiene:
   - saltos de secuencia
   - reenvíos
 - El orden de procesamiento es **estricto por dispositivo**
+- No existe orden global entre dispositivos
 
 ---
 
@@ -1518,6 +1649,7 @@ Regla:
 - El evento **no se reintenta automáticamente**
 - Se registra el rechazo
 - Se notifica al usuario
+- Un rechazo **no bloquea** los eventos posteriores
 
 ---
 
@@ -1531,6 +1663,37 @@ Cada evento queda registrado con:
 - Motivo de rechazo (si aplica)
 
 Nunca se borra.
+
+---
+
+## 🆔 Identidad del dispositivo
+
+- `device_id` se registra y **no se recicla**
+- Revocar un dispositivo:
+  - invalida eventos futuros
+  - **no invalida eventos pasados**
+
+---
+
+## ♻️ Reinstalación de la app
+
+- La cola offline es **volátil por diseño**
+- No se garantiza persistencia cross-install
+- Si el usuario desinstala, **asume la pérdida** de eventos locales
+
+Esto debe informarse explícitamente en UX.
+
+---
+
+## ⏱️ Timestamps
+
+- Siempre se guardan:
+  - `local_timestamp`
+  - `server_timestamp`
+- Las reglas se evalúan contra:
+  - server time (primario)
+  - local time (referencial)
+- Nunca se “corrige” el tiempo local
 
 ---
 
@@ -1548,6 +1711,18 @@ Nunca se borra.
 - Eventos firmados con hash
 - Asociados a dispositivo y usuario
 - No se aceptan eventos sin autenticación previa válida
+
+---
+
+## 🧭 UX obligatoria
+
+La UI debe mostrar:
+- eventos pendientes
+- eventos rechazados
+- motivo claro
+- acción sugerida
+
+No mostrar esto = bug funcional.
 
 ---
 
@@ -1932,11 +2107,16 @@ Estados:
 - Todos los eventos offline:
   - Son **append-only**
   - Nunca pisan datos existentes
-  - Se validan contra el estado actual
+  - Se validan contra el **estado actual**
 - Conflictos:
   - Se rechazan eventos inválidos
   - Se registran para auditoría
 - El servidor es la **fuente de verdad final**
+
+**Regla explícita**
+- No existe “rebobinado” del estado para acomodar offline.
+- Un evento puede ser válido al generarse y **rechazado al sincronizar**.
+- Esto es **esperado**, no un error del sistema.
 
 ---
 
@@ -2164,6 +2344,570 @@ Proyecto SISA — Core ERP
 
 
 
+
+
+
+===== ARCHIVO: sync-conflict-policy.md =====
+# Sync Conflict Policy — SISA
+
+## 🎯 Objetivo
+
+Definir **cómo SISA detecta, clasifica y resuelve conflictos** durante la sincronización de eventos offline, garantizando:
+
+- consistencia
+- auditabilidad
+- previsibilidad
+- ausencia de efectos colaterales silenciosos
+
+En SISA **no existen conflictos “automágicos”**.
+
+---
+
+## 🧠 Principio rector
+
+> **El servidor es la única fuente de verdad.**  
+> El cliente offline **propone hechos**, el servidor **decide validez**.
+
+---
+
+## 🧩 Qué es un conflicto
+
+Un conflicto ocurre cuando un **evento offline**:
+
+- contradice el estado actual del sistema
+- viola una regla de negocio
+- llega fuera de contexto temporal
+- fue generado sin permisos válidos
+- ya fue aplicado (duplicado)
+
+---
+
+## 🧱 Clasificación de conflictos
+
+### 1️⃣ Conflicto de estado
+
+**Descripción**  
+El evento intenta aplicarse sobre un estado inválido.
+
+**Ejemplo**
+- Evento: `job_paused`
+- Estado actual: `planned`
+
+**Resolución**
+- ❌ Evento rechazado
+- 📄 Motivo registrado
+- 🔔 Usuario notificado
+
+---
+
+### 2️⃣ Conflicto de transición prohibida
+
+**Descripción**  
+La acción viola la máquina de estados.
+
+**Ejemplo**
+- Evento: `job_resumed`
+- Estado actual: `completed`
+
+**Resolución**
+- ❌ Evento rechazado
+- 📄 Auditoría completa
+- ❌ No se reintenta
+
+---
+
+### 3️⃣ Conflicto de permisos
+
+**Descripción**
+El usuario no tiene permisos válidos al momento de sincronizar.
+
+**Ejemplo**
+- Usuario removido de la empresa
+- Rol degradado
+
+**Resolución**
+- ❌ Evento rechazado
+- 🔒 Seguridad prioritaria
+- 📄 Registro de intento
+
+---
+
+### 4️⃣ Conflicto temporal
+
+**Descripción**
+El evento presenta incoherencias de tiempo.
+
+**Ejemplos**
+- Fin antes del inicio
+- Superposición imposible de tramos
+- Timestamp inválido
+
+**Resolución**
+- ❌ Evento rechazado
+- 📄 Se conserva el payload original
+- 🔔 Usuario informado
+
+---
+
+### 5️⃣ Conflicto de duplicación
+
+**Descripción**
+El evento ya fue procesado.
+
+**Detección**
+- `event_id`
+- `hash`
+- `sequence_number`
+
+**Resolución**
+- ⚠️ Evento ignorado
+- ✔ Marcado como synced
+- 📄 Sin efectos colaterales
+
+---
+
+### 6️⃣ Conflicto estructural
+
+**Descripción**
+La entidad referenciada ya no existe o cambió su contexto.
+
+**Ejemplo**
+- Job eliminado virtualmente
+- Checklist deshabilitado
+
+**Resolución**
+- ❌ Evento rechazado
+- 📄 Registro obligatorio
+
+---
+
+## 🔄 Política de resolución
+
+| Tipo de conflicto | Acción |
+|------------------|-------|
+| Estado inválido | Rechazo |
+| Transición prohibida | Rechazo |
+| Permisos | Rechazo |
+| Temporal | Rechazo |
+| Duplicado | Ignorar |
+| Estructural | Rechazo |
+
+❗ **Nunca se corrige un evento automáticamente**  
+❗ **Nunca se reescribe la historia**
+
+---
+
+## ✅ Evaluación independiente
+
+- Cada evento se evalúa **de forma independiente**
+- Un rechazo **no bloquea** la cola
+- No existe rollback en cascada
+
+Ejemplo:
+- Evento 1 → rechazado
+- Evento 2 → válido  
+✔ Evento 2 se aplica
+
+---
+
+## 🔁 Reintentos
+
+- ❌ No hay reintentos automáticos
+- ✔ El usuario puede:
+  - revisar el motivo
+  - repetir la acción manualmente
+  - generar un nuevo evento válido
+
+Cada reintento es **un evento nuevo**, no una modificación.
+
+---
+
+## 🧾 Auditoría de conflictos
+
+Todo conflicto genera:
+
+- ID del evento
+- Tipo de conflicto
+- Payload original
+- Usuario
+- Empresa
+- Dispositivo
+- Timestamp local y de servidor
+- Motivo técnico del rechazo
+
+Estos registros **no se eliminan**.
+
+---
+
+## 🔔 Comunicación al usuario
+
+El sistema debe:
+
+- Informar claramente el rechazo
+- Explicar el motivo en lenguaje operativo
+- Evitar mensajes genéricos
+
+Ejemplo válido:
+> “El trabajo ya fue completado por otro usuario antes de sincronizar.”
+
+Ejemplo inválido:
+> “Error de sincronización.”
+
+---
+
+## 🔐 Seguridad
+
+- Un evento rechazado **no degrada** el sistema
+- No se bloquea la cola completa
+- Cada evento se evalúa individualmente
+- No hay escalamiento de privilegios offline
+
+---
+
+## 🧠 Filosofía final
+
+SISA **prefiere rechazar un evento válido**  
+antes que **aceptar uno incorrecto**.
+
+La integridad del sistema **está por encima de la comodidad del usuario**.
+
+---
+
+## ✅ Conclusión
+
+La política de conflictos de SISA garantiza que:
+
+- el offline no corrompe el core
+- los errores son visibles
+- el sistema es defendible
+- la historia nunca se reescribe
+
+Sin esta política, el offline es una mentira peligrosa.
+
+---
+
+
+===== ARCHIVO: sync-conflicts-schema.md =====
+# sync_conflicts — Schema Definition (SISA)
+
+## 🎯 Objetivo
+
+Definir la estructura de la tabla `sync_conflicts`, encargada de **registrar de forma inmutable** todos los conflictos detectados durante la sincronización de eventos offline.
+
+Esta tabla es **parte del sistema de auditoría** y **no admite borrado ni edición**.
+
+---
+
+## 🧠 Principios de diseño
+
+- Append-only
+- Auditoría completa
+- Multi-empresa real
+- No depende del estado actual para interpretarse
+- Reconstrucción histórica posible sin ambigüedades
+
+---
+
+## 🗄 Tabla: sync_conflicts
+
+### Campos obligatorios
+
+| Campo | Tipo | Descripción |
+|-----|-----|------------|
+| `id` | UUID | Identificador único del registro de conflicto |
+| `event_id` | UUID | ID del evento offline que generó el conflicto |
+| `company_id` | UUID | Empresa en la que ocurrió el conflicto |
+| `entity_type` | VARCHAR | Tipo de entidad afectada (job, checklist_item, time_entry, file, etc.) |
+| `entity_id` | UUID | ID de la entidad afectada |
+| `conflict_type` | VARCHAR | Clasificación del conflicto |
+| `action` | VARCHAR | Acción intentada (ej: job_paused) |
+| `payload` | JSON | Payload original del evento offline |
+| `user_id` | UUID | Usuario que generó el evento |
+| `device_id` | VARCHAR | Identificador del dispositivo |
+| `local_timestamp` | DATETIME | Timestamp generado en el dispositivo |
+| `server_timestamp` | DATETIME | Timestamp del servidor al procesar |
+| `rejection_reason` | TEXT | Motivo técnico del rechazo |
+| `created_at` | DATETIME | Momento de inserción del registro |
+
+---
+
+## 🧾 conflict_type — valores esperados
+
+`conflict_type` **no es libre**, debe responder a un set controlado.
+
+Valores recomendados:
+
+- `invalid_state`
+- `invalid_transition`
+- `permission_denied`
+- `temporal_inconsistency`
+- `duplicate_event`
+- `structural_conflict`
+- `unknown_entity`
+- `validation_error`
+
+> ❗ No se usan enums rígidos para permitir evolución controlada.
+
+---
+
+## 🔗 Relaciones conceptuales
+
+- `event_id` → offline_events.event_id
+- `company_id` → companies.id
+- `user_id` → users.id
+- `entity_id` → entidad correspondiente según `entity_type`
+
+⚠️ **No se usan foreign keys obligatorias**  
+Motivo: la entidad puede haber sido eliminada virtualmente.
+
+---
+
+## 🧱 Reglas duras
+
+- Ningún registro se elimina
+- Ningún registro se modifica
+- No se reutiliza `event_id`
+- Un mismo evento genera **máximo un conflicto**
+- La ausencia de `company_id` invalida el registro
+
+---
+
+## 🔐 Retención y acceso
+
+- Retención: **indefinida**
+- Acceso:
+  - solo admins
+  - solo lectura
+  - nunca editable
+- No visible para usuarios finales estándar
+
+---
+
+## 🔍 Casos de uso cubiertos
+
+- Auditoría legal
+- Debugging técnico
+- Soporte al usuario
+- Análisis de fallas offline
+- Métricas de calidad de sincronización
+
+---
+
+## ⚠️ Errores que este schema evita
+
+- Conflictos sin contexto empresarial
+- Logs ambiguos
+- Reescritura de historia
+- Debugging basado en suposiciones
+- “Funcionó en mi teléfono”
+
+---
+
+## ✅ Conclusión
+
+La tabla `sync_conflicts` es:
+
+- un registro de verdad
+- una defensa técnica
+- una herramienta legal
+- un seguro contra corrupción silenciosa
+
+Si esta tabla existe y se respeta, el offline **no miente**.
+
+---
+
+
+===== ARCHIVO: xxx_resultado_unificado.txt =====
+
+
+===== ARCHIVO: 📘 CHECKLIST — IMPLEMENTACIÓN MÍNIMA VIABLE (MVP) POR MÓDULO.md =====
+# **📘 CHECKLIST — IMPLEMENTACIÓN MÍNIMA VIABLE (MVP) POR MÓDULO**
+
+**Contrato técnico — Control de alcance — Sin interpretación**
+
+---
+
+## **🧱 1️⃣ CORE PLATFORM — MVP**
+
+Sin esto, el sistema **NO existe**.
+
+### **🔐 Identidad & Seguridad**
+
+* Users con estados (`pending`, `active`, `locked`, `disabled`, `deleted`)  
+* Hash seguro de contraseña  
+* Verificación de email  
+* Recuperación de contraseña  
+* Bloqueo automático por intentos fallidos  
+* Bloqueo manual administrativo  
+* User Security Events (login\_success / failed / lock / unlock)
+
+### **🔑 Sesiones**
+
+* Refresh tokens únicos  
+* Revocación inmediata de sesión  
+* Expiración configurable  
+* Logout idempotente  
+* Cambio de empresa por sesión
+
+### **🏢 Multiempresa**
+
+* Companies con lifecycle completo  
+* Company Memberships  
+* Roles gruesos (owner/admin/member/viewer)  
+* Protección de último owner  
+* Invitaciones por email con token
+
+### **📁 Archivos**
+
+* Files (repositorio universal)  
+* File Links (asociación flexible)  
+* Borrado lógico  
+* Auditoría de upload/link/unlink
+
+### **🧾 Auditoría**
+
+* Audit log append-only  
+* Auditoría de cambios de estado  
+* Auditoría de seguridad  
+* Auditoría de denegaciones críticas
+
+### **⚙️ Instalación**
+
+* Endpoint de instalación inicial  
+* Creación de superadmin  
+* Bloqueo permanente post-instalación  
+* Evento `install_completed`
+
+---
+
+## **🔐 2️⃣ PERMISOS FINOS (ACL / RBAC) — MVP**
+
+Controla el acceso **sin tocar negocio**.
+
+### **Permisos**
+
+* Registro de permisos atómicos  
+* Identificador único por permiso  
+* Permisos organizados por dominio
+
+### **Roles Finos**
+
+* Roles base definidos (erp\_operator, erp\_manager, etc.)  
+* Asignación por empresa  
+* Compatibilidad rol grueso ↔ rol fino  
+* Validación hard-deny por rol grueso
+
+### **Overrides**
+
+* Overrides explícitos por usuario  
+* Precedencia clara (override \> rol fino)
+
+### **Evaluación**
+
+* Evaluador determinístico de permisos  
+* Resultado binario (ALLOW / DENY)  
+* Auditoría de denegaciones críticas
+
+---
+
+## **📘 3️⃣ ERP OPERATIVO — MVP**
+
+Registra hechos reales.  
+NO interpreta contabilidad.
+
+### **Jobs**
+
+* Jobs con lifecycle completo  
+* Sin fechas reales en la tabla principal  
+* Job Time Entries (inicio/fin)  
+* Job Checklist Items  
+* Evidencia y responsables  
+* Estados terminales respetados  
+* Auditoría de transiciones
+
+### **Ventas / Compras**
+
+* Sales (draft/confirmed/cancelled)  
+* Purchases (simétrico)  
+* Validaciones cruzadas
+
+### **Presupuestos**
+
+* Quotes con estados  
+* Aceptación / rechazo auditados
+
+### **Facturación**
+
+* Invoices (draft/issued/voided)  
+* Bloqueo si hay receipts activos
+
+### **Cobros / Pagos**
+
+* Receipts (pending/completed/reversed)  
+* Payments (simétrico)  
+* Auditoría de ejecución y reversión
+
+### **Eventos**
+
+* Eventos operativos inmutables  
+* Idempotencia garantizada  
+* Eventos rechazados auditados
+
+---
+
+## **🧮 4️⃣ CONTABILIDAD (ACCCORE) — MVP**
+
+Nunca se implementa antes del ERP.
+
+### **Entrada**
+
+* Consumo de eventos ERP  
+* Validación de integridad temporal  
+* Reprocesamiento seguro
+
+### **Núcleo**
+
+* Plan de cuentas  
+* Asientos contables  
+* Devengamientos básicos  
+* Mayor
+
+### **Cierres**
+
+* Cierre de período  
+* Bloqueo post-cierre  
+* Reapertura solo por owner
+
+### **Auditoría**
+
+* Auditoría contable  
+* Trazabilidad evento → asiento  
+* No modificación de asientos
+
+---
+
+## **🧪 5️⃣ VALIDACIONES GLOBALES — MVP**
+
+* No borrado físico en ningún módulo  
+* Regla 4equim aplicada en todas las entidades  
+* Estados terminales no reversibles  
+* Fechas reales inmutables  
+* Correcciones solo por eventos  
+* Hard-deny antes de ACL  
+* Owner bypass documentado
+
+---
+
+## **🚨 6️⃣ CRITERIOS DE “LISTO PARA PRODUCCIÓN”**
+
+Un módulo está **listo** solo si:
+
+* Todos los ítems del checklist están completos  
+* No hay TODOs  
+* No hay permisos implícitos  
+* No hay lógica cruzada entre módulos  
+* Auditoría completa  
+* Documentación actualizada
 
 
 
@@ -3998,6 +4742,1073 @@ FASE 2 NO incluye:
 
 
 
+===== ARCHIVO: 📘 FASE 3 - ACCCORE (CONTABILIDAD).md =====
+---
+
+# **📘 FASE 3 — ACCCORE (CONTABILIDAD)**
+
+## **PASO 3.1 — FUNDAMENTOS Y ORDEN DE CONSTRUCCIÓN CONTABLE**
+
+**Contrato de arquitectura contable — Sin código**
+
+---
+
+## **🎯 PROPÓSITO DE ACCCORE**
+
+ACCCORE es el **núcleo contable** del sistema.
+
+Su función es:
+
+* interpretar hechos operativos del ERP (FASE 2\)  
+* generar información contable legal y consistente  
+* mantener trazabilidad completa evento → asiento  
+* permitir reconstrucción histórica  
+* soportar auditoría y fiscalidad
+
+👉 **ACCCORE NO REGISTRA HECHOS**  
+👉 **ACCCORE INTERPRETA HECHOS YA CERRADOS**
+
+---
+
+## **🧱 PRINCIPIO MADRE (NO NEGOCIABLE)**
+
+**NO EXISTE CONTABILIDAD SIN EVENTOS OPERATIVOS PREVIOS**
+
+ACCCORE:
+
+* no recibe inputs directos de UI  
+* no recibe “crear asiento” manual libre  
+* no corrige el pasado  
+* no depende de estados actuales, sino de eventos históricos
+
+---
+
+## **🧱 ORDEN REAL DE IMPLEMENTACIÓN CONTABLE**
+
+1\) Modelo contable base
+
+2\) Plan de cuentas
+
+3\) Periodos contables
+
+4\) Motor de asientos
+
+5\) Mayor contable
+
+6\) Cierres
+
+7\) Reportes
+
+Este orden **NO se altera**.
+
+---
+
+## **🧱 1️⃣ MODELO CONTABLE BASE**
+
+### **Entidades conceptuales mínimas**
+
+* Account (Cuenta contable)  
+* AccountingPeriod (Periodo)  
+* JournalEntry (Asiento)  
+* JournalLine (Debe / Haber)  
+* AccountingEventLink (vínculo a evento ERP)
+
+👉 **Nada más al principio**.
+
+---
+
+## **🧱 2️⃣ PLAN DE CUENTAS**
+
+### **Reglas duras**
+
+* Plan único por empresa  
+* Cuentas jerárquicas  
+* Cuentas:  
+  * activo  
+  * pasivo  
+  * patrimonio  
+  * resultados  
+* No se eliminan  
+* Se archivan  
+* Se versionan implícitamente por uso histórico
+
+### **Estado de cuentas**
+
+* active  
+* archived
+
+---
+
+## **🧱 3️⃣ PERIODOS CONTABLES**
+
+### **Concepto**
+
+La contabilidad se organiza en **periodos cerrables**:
+
+* mensual (base)  
+* anual (agrupación)
+
+### **Reglas**
+
+* Un asiento pertenece a un solo periodo  
+* Periodo cerrado:  
+  * no admite nuevos asientos  
+  * no admite modificaciones  
+* Reapertura:  
+  * solo owner  
+  * evento auditado
+
+---
+
+## **🧱 4️⃣ MOTOR DE ASIENTOS (CORE CONTABLE)**
+
+### **Función**
+
+Transformar **eventos ERP** en **asientos contables**.
+
+### **Reglas críticas**
+
+* Cada evento ERP:  
+  * puede generar 0, 1 o N asientos  
+* Un evento:  
+  * se procesa una sola vez (idempotencia)  
+* Cada asiento:  
+  * está vinculado al evento origen  
+* Debe \= Haber (siempre)
+
+👉 **No hay asientos “sueltos”**
+
+---
+
+## **🧱 5️⃣ MAYOR CONTABLE**
+
+### **Función**
+
+Acumulación histórica de movimientos:
+
+* por cuenta  
+* por periodo  
+* por empresa
+
+### **Reglas**
+
+* El mayor es **derivado**, no fuente  
+* Nunca se edita manualmente  
+* Se recalcula si es necesario
+
+---
+
+## **🧱 6️⃣ CIERRES CONTABLES**
+
+### **Proceso**
+
+1. Validar periodos  
+2. Verificar balance  
+3. Cerrar periodo  
+4. Bloquear escrituras  
+5. Emitir evento `period_closed`
+
+### **Reglas**
+
+* Periodo cerrado es inmutable  
+* Ajustes posteriores:  
+  * se hacen en periodos futuros  
+* Nunca se reescribe el pasado
+
+---
+
+## **🧱 7️⃣ REPORTES (NO MVP AÚN)**
+
+Derivan de mayor \+ plan:
+
+* Balance  
+* Estado de resultados  
+* Libros legales
+
+👉 **No se implementan antes de cerrar lo anterior**
+
+---
+
+## **🔐 AUTORIZACIÓN CONTABLE**
+
+* Solo roles finos contables  
+* Solo owner puede:  
+  * cerrar periodos  
+  * reabrir periodos  
+* Admin:  
+  * NO toca contabilidad  
+* Member / Viewer:  
+  * NO acceden
+
+---
+
+## **🧾 AUDITORÍA CONTABLE**
+
+Debe existir trazabilidad completa:
+
+Evento ERP → Asiento → Línea → Cuenta → Periodo
+
+Nada puede romper esa cadena.
+
+---
+
+## **🚨 COSAS QUE NO SE HACEN (NUNCA)**
+
+* ❌ Crear asientos desde UI  
+* ❌ Editar asientos  
+* ❌ Borrar asientos  
+* ❌ Reabrir periodos sin auditoría  
+* ❌ Mezclar contabilidad con ERP  
+* ❌ Inferir contabilidad por estado actual
+
+---
+
+---
+
+# **📘 FASE 3 — ACCCORE (CONTABILIDAD)**
+
+## **PASO 3.2 — DISEÑO DEL PLAN DE CUENTAS BASE (ARGENTINA-READY)**
+
+**Contrato de arquitectura contable — Sin código**
+
+---
+
+## **🎯 OBJETIVO**
+
+Definir un **Plan de Cuentas base**, mínimo pero **legalmente válido en Argentina**, que:
+
+* sea **genérico y reutilizable**  
+* soporte **ERP multiempresa**  
+* permita **reconstrucción histórica**  
+* no mezcle fiscalidad con operación  
+* escale sin romper compatibilidad
+
+Este plan **no es el definitivo de cada empresa**, es el **baseline obligatorio**.
+
+---
+
+## **🧱 PRINCIPIOS INMUTABLES**
+
+1. **Plan único por empresa**  
+2. **Cuentas jerárquicas** (padre/hijo)  
+3. **Nunca se borran cuentas**  
+4. **Una cuenta usada no cambia de tipo**  
+5. **El pasado no se reescribe**  
+6. **La contabilidad nace del ERP, no del usuario**
+
+---
+
+## **🧱 ESTRUCTURA GENERAL DEL PLAN**
+
+Clasificación contable estándar:
+
+1 \- ACTIVO  
+2 \- PASIVO  
+3 \- PATRIMONIO NETO  
+4 \- RESULTADOS (+)  
+5 \- RESULTADOS (−)
+
+Cada nivel admite **subniveles ilimitados**.
+
+---
+
+## **🧱 1️⃣ ACTIVO (1.x)**
+
+### **1.1 Activo Corriente**
+
+* 1.1.1 Caja  
+* 1.1.2 Bancos  
+* 1.1.3 Valores a Depositar  
+* 1.1.4 Créditos por Ventas  
+* 1.1.5 Otros Créditos  
+* 1.1.6 IVA Crédito Fiscal  
+* 1.1.7 Anticipos a Proveedores  
+* 1.1.8 Mercaderías / Stock
+
+### **1.2 Activo No Corriente**
+
+* 1.2.1 Bienes de Uso  
+* 1.2.2 Amortización Acumulada  
+* 1.2.3 Inversiones  
+* 1.2.4 Activos Intangibles
+
+---
+
+## **🧱 2️⃣ PASIVO (2.x)**
+
+### **2.1 Pasivo Corriente**
+
+* 2.1.1 Proveedores  
+* 2.1.2 Documentos a Pagar  
+* 2.1.3 Remuneraciones a Pagar  
+* 2.1.4 Cargas Sociales a Pagar  
+* 2.1.5 IVA Débito Fiscal  
+* 2.1.6 Impuestos a Pagar  
+* 2.1.7 Anticipos de Clientes
+
+### **2.2 Pasivo No Corriente**
+
+* 2.2.1 Préstamos Bancarios  
+* 2.2.2 Deudas a Largo Plazo
+
+---
+
+## **🧱 3️⃣ PATRIMONIO NETO (3.x)**
+
+* 3.1 Capital Social  
+* 3.2 Ajustes al Patrimonio  
+* 3.3 Resultados Acumulados  
+* 3.4 Resultado del Ejercicio
+
+---
+
+## **🧱 4️⃣ RESULTADOS POSITIVOS (4.x)**
+
+### **4.1 Ingresos Operativos**
+
+* 4.1.1 Ventas  
+* 4.1.2 Servicios Prestados
+
+### **4.2 Ingresos No Operativos**
+
+* 4.2.1 Intereses Ganados  
+* 4.2.2 Diferencias de Cambio
+
+---
+
+## **🧱 5️⃣ RESULTADOS NEGATIVOS (5.x)**
+
+### **5.1 Costos**
+
+* 5.1.1 Costo de Mercaderías Vendidas  
+* 5.1.2 Costo de Servicios Prestados
+
+### **5.2 Gastos Operativos**
+
+* 5.2.1 Sueldos y Jornales  
+* 5.2.2 Cargas Sociales  
+* 5.2.3 Alquileres  
+* 5.2.4 Servicios  
+* 5.2.5 Mantenimiento  
+* 5.2.6 Honorarios  
+* 5.2.7 Impuestos y Tasas  
+* 5.2.8 Gastos Bancarios
+
+### **5.3 Gastos No Operativos**
+
+* 5.3.1 Intereses Perdidos  
+* 5.3.2 Diferencias de Cambio
+
+---
+
+## **🧱 CODIFICACIÓN DE CUENTAS**
+
+### **Reglas**
+
+* Código numérico jerárquico (`1.1.4`, `5.2.3`)  
+* El código **no define lógica**, solo orden  
+* El tipo de cuenta define comportamiento:  
+  * ACTIVO / PASIVO / PATRIMONIO / RESULTADO+
+
+---
+
+## **🧱 ESTADOS DE CUENTAS**
+
+* `active`  
+* `archived`
+
+### **Reglas duras**
+
+* Una cuenta **archivada**:  
+  * no admite nuevos asientos  
+  * conserva historial  
+* Una cuenta **usada**:  
+  * no cambia de tipo  
+  * no cambia de jerarquía padre
+
+---
+
+## **🧱 RELACIÓN CON EL ERP (FASE 2\)**
+
+Las cuentas **NO se usan directamente desde el ERP**.
+
+El ERP genera **eventos** como:
+
+* `invoice_issued`  
+* `receipt_completed`  
+* `payment_completed`  
+* `job_completed`
+
+ACCCORE traduce esos eventos a asientos usando **reglas contables** (PASO 3.3).
+
+---
+
+## **🧾 EJEMPLO CONCEPTUAL (SIN CÓDIGO)**
+
+Evento:
+
+invoice\_issued
+
+Asiento:
+
+Debe: 1.1.4 Créditos por Ventas  
+Haber: 4.1.1 Ventas  
+Haber: 2.1.5 IVA Débito Fiscal
+
+⚠️ Esto es **ejemplo conceptual**, no implementación.
+
+---
+
+## **🔐 AUTORIZACIÓN**
+
+* Solo `accounting_operator` y `accounting_admin`  
+* Cierre y reapertura:  
+  * solo `owner`  
+* Admin / Member / Viewer:  
+  * ❌ sin acceso
+
+---
+
+## **🚨 COSAS QUE NO SE HACEN**
+
+* ❌ Borrar cuentas  
+* ❌ Editar tipo de cuenta usada  
+* ❌ Postear manualmente sin evento  
+* ❌ Mezclar impuestos con ingresos  
+* ❌ Crear cuentas “hardcodeadas” por UI
+
+---
+
+---
+
+# **📘 FASE 3 — ACCCORE (CONTABILIDAD)**
+
+## **PASO 3.3 — MOTOR DE ASIENTOS CONTABLES (EVENT → JOURNAL)**
+
+**Contrato de arquitectura — Sin código**
+
+---
+
+## **🎯 OBJETIVO**
+
+Definir el **Motor de Asientos Contables**, responsable de:
+
+* transformar **eventos del ERP** en **asientos contables**  
+* garantizar **integridad**, **idempotencia** y **trazabilidad**  
+* impedir creación manual o implícita de asientos  
+* asegurar cumplimiento legal y contable
+
+Este motor es el **corazón de ACCCORE**.
+
+---
+
+## **🧱 PRINCIPIOS NO NEGOCIABLES**
+
+1. **Los asientos nacen SOLO de eventos ERP**  
+2. **Cada evento se procesa una sola vez**  
+3. **Debe \= Haber siempre**  
+4. **Nada se edita, todo se deriva**  
+5. **El pasado no se corrige**  
+6. **Toda traducción es auditable**
+
+---
+
+## **🧱 ENTRADA DEL MOTOR**
+
+### **Eventos válidos**
+
+* `invoice_issued`  
+* `invoice_voided`  
+* `receipt_completed`  
+* `receipt_reversed`  
+* `payment_completed`  
+* `payment_reversed`  
+* `job_completed`  
+* `adjustment_event` (siempre explícito)
+
+### **Reglas**
+
+* Evento **cerrado**  
+* Evento **válido**  
+* Evento **no procesado**  
+* Evento **pertenece a empresa activa**
+
+Si falla alguna → **RECHAZO \+ AUDITORÍA**
+
+---
+
+## **🧱 SALIDA DEL MOTOR**
+
+* 0, 1 o N **JournalEntry**  
+* Cada JournalEntry tiene:  
+  * fecha contable  
+  * periodo contable  
+  * referencia al evento  
+  * estado `posted`
+
+---
+
+## **🧱 ESTRUCTURA DE ASIENTO**
+
+### **JournalEntry**
+
+* empresa  
+* periodo  
+* evento origen  
+* timestamp de contabilización  
+* estado
+
+### **JournalLine**
+
+* cuenta  
+* debe / haber  
+* importe  
+* moneda  
+* metadata mínima
+
+---
+
+## **🧱 IDempotencia (CRÍTICO)**
+
+### **Regla**
+
+Un evento ERP **no puede generar asientos dos veces**.
+
+### **Mecanismo conceptual**
+
+* Cada evento tiene:  
+  * `accounting_processed = false`  
+* El motor:  
+  * marca el evento al procesar  
+  * rechaza reprocesos
+
+### **Reprocesamiento**
+
+* Solo mediante comando explícito  
+* Evento auditado  
+* Nunca automático
+
+---
+
+## **🧱 SELECCIÓN DE PERIODO CONTABLE**
+
+### **Regla base**
+
+* El asiento se imputa al periodo:  
+  * correspondiente a la **fecha del evento**  
+* Si el periodo está cerrado:  
+  * evento se rechaza  
+  * o se difiere (según política futura)
+
+⚠️ MVP: **rechazo duro**
+
+---
+
+## **🧱 REGLAS DE TRADUCCIÓN (EJEMPLOS CONCEPTUALES)**
+
+### **📄 `invoice_issued`**
+
+Debe: Créditos por Ventas  
+Haber: Ventas  
+Haber: IVA Débito Fiscal
+
+---
+
+### **💰 `receipt_completed`**
+
+Debe: Caja / Bancos  
+Haber: Créditos por Ventas
+
+---
+
+### **💸 `payment_completed`**
+
+Debe: Proveedores  
+Haber: Caja / Bancos
+
+---
+
+### **🔁 Reversiones (`*_reversed`)**
+
+**Nunca se borra el asiento original**
+
+Se genera un **asiento espejo**:
+
+* Debe ↔ Haber  
+* Mismo importe  
+* Referencia al evento de reversión
+
+---
+
+## **🧱 VALIDACIONES CONTABLES**
+
+Antes de postear:
+
+* Debe \= Haber  
+* Cuentas activas  
+* Periodo abierto  
+* Evento válido  
+* Empresa coincide  
+* Moneda válida
+
+Si falla → **NO POSTEAR**
+
+---
+
+## **🧾 AUDITORÍA CONTABLE**
+
+Registrar:
+
+* evento ERP  
+* asientos generados  
+* líneas  
+* cuentas  
+* periodo  
+* usuario (si aplica)  
+* timestamp
+
+---
+
+## **🧱 ERRORES Y RECHAZOS**
+
+Un rechazo:
+
+* NO se corrige  
+* NO se reintenta automáticamente  
+* genera evento `accounting_rejected`
+
+Motivos:
+
+* periodo cerrado  
+* evento inválido  
+* inconsistencia contable
+
+---
+
+## **🚨 COSAS PROHIBIDAS**
+
+* ❌ Crear asientos manuales  
+* ❌ Editar asientos  
+* ❌ Borrar asientos  
+* ❌ Postear en periodos cerrados  
+* ❌ Reprocesar sin auditoría  
+* ❌ Generar asientos desde UI
+
+---
+
+## **🔐 AUTORIZACIÓN**
+
+* Posteo automático: sistema  
+* Reprocesos:  
+  * solo `accounting_admin`  
+* Cierre de periodo:  
+  * solo `owner`
+
+---
+
+## **✅ RESULTADO DEL PASO 3.3**
+
+Al finalizar este paso:
+
+* tenés un motor determinístico  
+* eventos → asientos trazables  
+* contabilidad inmutable  
+* sistema audit-ready  
+* base sólida para fiscalidad
+
+---
+
+---
+
+# **📘 FASE 3 — ACCCORE (CONTABILIDAD)**
+
+## **PASO 3.4 — PERIODOS CONTABLES Y CIERRES**
+
+**Contrato de arquitectura contable — Sin código**
+
+---
+
+## **🎯 OBJETIVO**
+
+Definir el **modelo de periodos contables** y el **proceso de cierre**, garantizando que:
+
+* la contabilidad sea **inmutable**  
+* el pasado **no se reescriba**  
+* los asientos queden **legalmente protegidos**  
+* los errores se corrijan **hacia adelante**  
+* exista **trazabilidad completa**
+
+Este paso convierte a ACCCORE en un sistema **legalmente serio**.
+
+---
+
+## **🧱 PRINCIPIO MADRE**
+
+**UN PERIODO CERRADO ES INVIOLABLE**
+
+No admite:
+
+* nuevos asientos  
+* modificaciones  
+* reversiones directas
+
+Cualquier corrección ocurre **en periodos futuros**.
+
+---
+
+## **🧱 DEFINICIÓN DE PERIODO CONTABLE**
+
+Un **Accounting Period** representa un intervalo temporal cerrado.
+
+### **Propiedades conceptuales**
+
+* empresa  
+* fecha\_inicio  
+* fecha\_fin  
+* estado  
+* timestamp de cierre (si aplica)
+
+### **Estados posibles**
+
+* `open`  
+* `closed`  
+* `reopened` (estado técnico, no operativo)
+
+---
+
+## **🧱 GRANULARIDAD**
+
+### **MVP**
+
+* Periodos **mensuales**  
+* Año contable \= agrupación de periodos
+
+⚠️ No se permite:
+
+* periodos diarios  
+* periodos arbitrarios  
+* periodos solapados
+
+---
+
+## **🧱 REGLAS DE ASIGNACIÓN DE ASIENTOS**
+
+* Cada asiento pertenece a **un solo periodo**  
+* El periodo se determina por:  
+  * fecha del evento ERP  
+* No se reasigna un asiento a otro periodo
+
+Si el periodo correspondiente está cerrado:
+
+* el evento **se rechaza** (MVP)  
+* se audita el rechazo
+
+---
+
+## **🧱 PROCESO DE CIERRE CONTABLE**
+
+### **Secuencia obligatoria**
+
+1. Verificar que el periodo esté `open`  
+2. Validar integridad contable  
+3. Verificar Debe \= Haber global  
+4. Confirmar ausencia de asientos pendientes  
+5. Ejecutar cierre  
+6. Cambiar estado a `closed`  
+7. Emitir evento `period_closed`  
+8. Bloquear escrituras
+
+---
+
+## **🧱 VALIDACIONES PRE-CIERRE**
+
+Antes de cerrar:
+
+* No hay asientos desbalanceados  
+* No hay eventos ERP sin procesar  
+* Todas las cuentas son válidas  
+* No hay inconsistencias monetarias  
+* Auditoría completa
+
+Si falla alguna → **NO cerrar**
+
+---
+
+## **🧱 EFECTOS DEL CIERRE**
+
+Un periodo cerrado:
+
+* ❌ no acepta nuevos asientos  
+* ❌ no admite modificaciones  
+* ❌ no permite reversiones  
+* ❌ no permite reprocesos  
+* ✅ conserva trazabilidad total
+
+---
+
+## **🧱 REAPERTURA DE PERIODO (EXCEPCIONAL)**
+
+### **Regla dura**
+
+**Reabrir un periodo es una excepción grave**
+
+### **Autorización**
+
+* Solo `owner`  
+* Nunca `admin`  
+* Nunca automática
+
+---
+
+### **Proceso de reapertura**
+
+1. Solicitud explícita  
+2. Motivo obligatorio  
+3. Auditoría reforzada  
+4. Cambio temporal a `reopened`  
+5. Acciones estrictamente necesarias  
+6. Nuevo cierre inmediato  
+7. Evento `period_reopened`
+
+⚠️ La reapertura **no borra historia**, solo habilita acciones controladas.
+
+---
+
+## **🧱 AJUSTES POST-CIERRE**
+
+### **Regla**
+
+Los errores detectados **después del cierre**:
+
+* NO modifican el periodo cerrado  
+* generan **asientos de ajuste** en el periodo actual
+
+Ejemplos:
+
+* ajustes contables  
+* diferencias  
+* reclasificaciones
+
+---
+
+## **🧾 AUDITORÍA CONTABLE**
+
+Debe registrarse:
+
+* cierre de periodo  
+* reapertura  
+* usuario responsable  
+* timestamp  
+* motivo  
+* impactos derivados
+
+La auditoría es **append-only**.
+
+---
+
+## **🔐 AUTORIZACIÓN**
+
+* Cerrar periodo:  
+  * `owner`  
+* Reabrir periodo:  
+  * `owner`  
+* Postear asientos:  
+  * sistema (motor)  
+* Admin / Member / Viewer:  
+  * ❌ sin acceso
+
+---
+
+## **🚨 COSAS PROHIBIDAS**
+
+* ❌ Cerrar periodos automáticamente  
+* ❌ Reabrir sin auditoría  
+* ❌ Editar asientos post-cierre  
+* ❌ Borrar periodos  
+* ❌ Saltar validaciones  
+* ❌ Corregir el pasado
+
+---
+
+---
+
+# **📘 FASE 3 — ACCCORE (CONTABILIDAD)**
+
+## **PASO 3.5 — MAYOR CONTABLE Y DERIVACIONES**
+
+**Contrato de arquitectura contable — Sin código**
+
+---
+
+## **🎯 OBJETIVO**
+
+Definir el **Mayor Contable** como estructura derivada que:
+
+* consolida los asientos  
+* permite informes financieros  
+* mantiene trazabilidad completa  
+* no introduce mutabilidad  
+* puede recalcularse sin pérdida de información
+
+El mayor **NO es fuente de verdad**, es **resultado**.
+
+---
+
+## **🧱 PRINCIPIO FUNDAMENTAL**
+
+**LA FUENTE DE VERDAD SON LOS ASIENTOS, NO EL MAYOR**
+
+Si el mayor y los asientos difieren,  
+**los asientos ganan siempre**.
+
+---
+
+## **🧱 DEFINICIÓN DE MAYOR CONTABLE**
+
+El **General Ledger (Mayor)** representa:
+
+* acumulación de movimientos por cuenta  
+* ordenados por periodo  
+* con saldos progresivos
+
+  ### **Entidades conceptuales**
+
+* LedgerAccount (vista por cuenta)  
+* LedgerPeriod (vista por periodo)  
+* LedgerBalance (saldo acumulado)
+
+⚠️ Son **estructuras derivadas**, no editables.
+
+---
+
+## **🧱 CONSTRUCCIÓN DEL MAYOR**
+
+### **Fuente**
+
+* JournalEntry  
+* JournalLine  
+* Account  
+* AccountingPeriod
+
+  ### **Proceso conceptual**
+
+1. Seleccionar asientos posteados  
+2. Agrupar por cuenta  
+3. Ordenar cronológicamente  
+4. Calcular saldos  
+5. Persistir o materializar  
+   ---
+
+   ## **🧱 TIPOS DE MAYOR**
+
+   ### **1️⃣ Mayor por Cuenta**
+
+* Movimientos detallados  
+* Saldo acumulado  
+* Base para auditoría  
+  ---
+
+  ### **2️⃣ Mayor por Periodo**
+
+* Movimientos del periodo  
+* Saldo inicial  
+* Saldo final  
+  ---
+
+  ### **3️⃣ Mayor Histórico**
+
+* Arrastre inter-periodo  
+* Base para balances anuales  
+  ---
+
+  ## **🧱 REGLAS DE SALDO**
+
+* Activo:  
+  * Debe incrementa  
+  * Haber decrementa  
+* Pasivo / Patrimonio:  
+  * Haber incrementa  
+  * Debe decrementa  
+* Resultados:  
+  * Se acumulan por periodo
+
+Las reglas dependen del **tipo de cuenta**, no del evento.
+
+---
+
+## **🧱 RECÁLCULO DEL MAYOR**
+
+### **Cuándo recalcular**
+
+* reprocesamiento autorizado  
+* reapertura de periodo  
+* corrección de asientos futuros  
+* inconsistencia detectada
+
+  ### **Regla**
+
+* El recálculo:  
+  * no modifica asientos  
+  * no borra historia  
+  * es idempotente
+
+  ---
+
+  ## **🧱 RELACIÓN CON CIERRES**
+
+* Periodos cerrados:  
+  * mayor queda congelado  
+* Periodos abiertos:  
+  * mayor puede recalcularse
+
+  ---
+
+  ## **🧱 INFORMES DERIVADOS (NO MVP)**
+
+El mayor alimenta:
+
+* Balance General  
+* Estado de Resultados  
+* Libros legales
+
+⚠️ No se implementan antes del cierre total del núcleo.
+
+---
+
+## **🧾 TRAZABILIDAD TOTAL**
+
+Cada saldo debe poder rastrearse:
+
+* Saldo → Cuenta → Línea → Asiento → Evento ERP
+
+
+Si no se puede trazar, el dato es inválido.
+
+---
+
+## **🧱 AUTORIZACIÓN**
+
+* Visualización:  
+  * `accounting_operator`  
+  * `accounting_admin`  
+* Recalculo:  
+  * sistema  
+* Admin / Member / Viewer:  
+  * ❌ sin acceso
+
+  ---
+
+  ## **🚨 COSAS PROHIBIDAS**
+
+* ❌ Editar el mayor manualmente  
+* ❌ Usar el mayor como input  
+* ❌ Ajustar saldos sin asiento  
+* ❌ Ocultar movimientos  
+* ❌ Calcular balances desde ERP  
+  ---
+
+
+
 ===== ARCHIVO: 📘 PERMISOS FINOS - ACL _ RBAC EXTENDIDO (MÓDULO TRANSVERSAL).md =====
 # **📘 PERMISOS FINOS — ACL / RBAC EXTENDIDO (MÓDULO TRANSVERSAL)**
 
@@ -4200,6 +6011,44 @@ Los roles finos se asignan **por empresa**, no globalmente.
 
 Un mismo usuario puede ser:
 
+---
+
+## **🧩 TABLA ACTUALIZADA — ROLES/PERMISOS (ACL/RBAC)**
+
+> Consolidación de políticas de autorización aplicables a permisos finos.
+
+| Regla | Descripción |
+|---|---|
+| Roles gruesos **no otorgan** permisos finos | El rol grueso solo limita el universo posible. |
+| Hard‑deny por rol grueso | Si el rol grueso prohíbe, **DENY** aunque haya rol fino. |
+| Permiso explícito requerido | Si no existe permiso atómico explícito → **DENY**. |
+| Sin herencia implícita | Ningún rol fino hereda de otro. |
+| Overrides explícitos | Si están definidos, prevalecen. |
+| Auditoría obligatoria | Toda denegación crítica y acción de seguridad/contabilidad debe auditarse. |
+
+---
+
+## **✅ CHECKLIST PRE‑IMPLEMENTACIÓN (ACL/RBAC)**
+
+- [ ] Separación de capas: ACL es transversal, no pertenece a Core/ERP/Contabilidad.
+- [ ] Permisos **atómicos** y **explícitos** (si no existe → DENY).
+- [ ] Sin herencia implícita entre roles finos.
+- [ ] Hard‑deny por rol grueso aplicado antes de permisos finos.
+- [ ] Overrides explícitos definidos y auditables.
+- [ ] Auditoría obligatoria en denegaciones críticas y acciones sensibles.
+
+---
+
+## **🧭 REGLAS EXACTAS PARA BACKEND (POLICIES/ACL)**
+
+1. Validar `X-Company-Id` y membership activa.
+2. Evaluar **rol grueso** → aplicar hard‑deny si corresponde.
+3. Evaluar **roles finos** asignados por empresa.
+4. Verificar **permiso atómico explícito**.
+5. Resolver **overrides explícitos** (si existen).
+6. Registrar auditoría en denegaciones críticas y acciones sensibles.
+7. Resultado final: **ALLOW** o **DENY** determinístico.
+
 * `erp_manager` en Empresa A
 
 * `finance_viewer` en Empresa B
@@ -4385,7 +6234,6 @@ Este módulo:
 * protege auditoría y trazabilidad
 
 * es compatible con cualquier ERP o módulo futuro
-
 
 
 ===== ARCHIVO: 📘 PERMISOS GRUESOS - POLÍTICAS DE AUTORIZACIÓN POR ROL GRUESO (CORE ROLES).md =====
@@ -4597,6 +6445,30 @@ Lectura y observación.
 
 ---
 
+## **🧩 TABLA ACTUALIZADA — ROLES GRUESOS Y LÍMITES**
+
+> Consolidación de límites duros y capacidades máximas. Los roles gruesos **no** otorgan permisos finos.
+
+| Rol grueso | Límite duro (hard‑deny) | Capacidades máximas permitidas | Asignación de roles finos |
+|---|---|---|---|
+| **owner** | No puede eliminar datos físicos, eliminar auditoría, romper 4equim, dejar empresa sin owner | Acceso total a ERP, contabilidad completa, cierres contables, auditoría, configuración, usuarios | Puede asignar **cualquier rol fino** |
+| **admin** | No puede permisos contables críticos, cerrar/reabrir períodos, modificar reglas contables, eliminar owners, transferir ownership | ERP completo, gestión operativa, invoices, cobros/pagos, reportes operativos, auditoría solo lectura | Puede asignar **roles finos no críticos** |
+| **member** | Sin contabilidad, sin gestión de usuarios, sin roles, sin acciones críticas | Operación limitada, jobs, tiempos, borradores, archivos, info operativa propia | **No** asigna roles finos |
+| **viewer** | Solo lectura; cualquier permiso de escritura → DENY | Lectura operativa básica (jobs/ventas/invoices read-only) | **No** asigna roles finos |
+
+---
+
+## **✅ CHECKLIST PRE‑IMPLEMENTACIÓN (ROLES GRUESOS)**
+
+- [ ] Los roles gruesos **no** otorgan permisos finos.
+- [ ] Hard‑deny aplicado **antes** de evaluar roles finos.
+- [ ] `viewer` es **solo lectura** (cualquier escritura → DENY).
+- [ ] `member` sin contabilidad y sin gestión de usuarios.
+- [ ] `admin` sin permisos contables críticos.
+- [ ] `owner` con bypass explícito de ACL.
+- [ ] Auditoría obligatoria en acciones críticas y denegaciones relevantes.
+- [ ] Separación de capas Core ≠ ACL ≠ ERP ≠ Contabilidad.
+
 ## **🧾 AUDITORÍA DE POLÍTICAS**
 
 Debe auditarse:
@@ -4630,6 +6502,5 @@ Con estas políticas:
 * El sistema es escalable  
 * No hay escalamiento indebido  
 * No hay deuda conceptual
-
 
 
