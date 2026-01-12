@@ -1,0 +1,4635 @@
+===== ARCHIVO: FASES.md =====
+🧱 1) NÚCLEO (Core Platform)
+📌 Identidad, seguridad, multiempresa, auditoría, archivos.
+
+Es el cimiento obligatorio.
+
+Incluye:
+
+Users
+
+User Security Events
+
+User Sessions
+
+Companies
+
+Memberships
+
+Roles
+
+Legal Acceptances
+
+Audit Log
+
+Company Settings
+
+Files + File Links
+
+Instalación inicial
+
+Login / Logout
+
+Regla 4equim
+
+Estados lógicos
+
+Multiempresa real
+
+👉 Sin esto, no existe SISA.
+Sin esto, no podés construir ERP.
+Sin esto, no podés garantizar contabilidad.
+
+Este módulo SIEMPRE VA PRIMERO.
+
+📘 2) NEGOCIO (ERP Operativo)
+📌 Registra hechos reales, NO los interpreta contablemente.
+
+Acá va todo lo operativo del día a día:
+
+Jobs (órdenes de trabajo)
+
+Job Time Entries
+
+Job Checklist Items
+
+Quotes
+
+Sales
+
+Purchases
+
+Invoices
+
+Receipts
+
+Payments
+
+Adjustments
+
+Estados, lifecycles, auditorías
+
+Validaciones cruzadas ERP
+
+👉 Fase 2 produce eventos operativos inmutables.
+These events are the raw material of accounting.
+
+Este módulo SIEMPRE VA DESPUÉS DEL NÚCLEO
+y SIEMPRE VA ANTES de la contabilidad.
+
+Si lo invertís → te explota la consistencia temporal.
+
+📙 3) CONTABILIDAD (ACCCORE – Fase 3)
+📌 Interpreta los eventos operativos del ERP y produce información contable real.
+
+Incluye:
+
+Plan de cuentas
+
+Asientos contables
+
+Centros de costo
+
+IVA
+
+Percepciones / Retenciones
+
+Cierres contables
+
+Mayor analítico
+
+Balance, PyG
+
+Devengamientos
+
+Contabilidad por empresa
+
+Auditoría contable
+
+Reglas fiscales
+
+👉 Contabilidad NO puede existir antes del ERP.
+NUNCA se generan asientos directamente desde módulos operativos.
+SIEMPRE debe hacerse desde eventos auditables.
+
+🎯 Resumen brutalmente claro
+✔ 1) CORE
+
+Fundación del sistema
+(lo que hace posible todo)
+
+✔ 2) NEGOCIO / ERP
+
+Registra hechos
+(no interpreta nada)
+
+✔ 3) CONTABILIDAD
+
+Interpreta hechos → genera asientos
+
+🎯 Orden obligatorio
+
+1️⃣ Core Platform
+2️⃣ ERP Operativo (Negocio)
+3️⃣ Contabilidad (ACCCORE)
+
+===== ARCHIVO: offline-events.md =====
+# Offline Events Queue — SISA
+
+## 🎯 Objetivo
+
+Definir el **modelo de cola de eventos offline** utilizado por SISA para registrar acciones realizadas sin conectividad y sincronizarlas de forma **segura**, **auditable** y **determinista**.
+
+Esta cola es la **única vía válida** para introducir cambios offline al sistema.
+
+---
+
+## 🧠 Principios no negociables
+
+- La cola es **append-only**
+- Los eventos **no se editan**
+- Los eventos **no se eliminan**
+- El servidor es la **fuente de verdad final**
+- El orden importa
+- La validación siempre ocurre **en el servidor**
+
+---
+
+## 🧱 Concepto central
+
+Un **Offline Event** representa **una acción del usuario**, no un estado final.
+
+Ejemplo:
+- ✔ “El usuario inició el trabajo”
+- ❌ “El trabajo quedó en progreso”
+
+---
+
+## 🧾 Estructura lógica de un Offline Event
+
+Cada evento contiene:
+
+- `event_id` — UUID único
+- `entity_type` — Job, ChecklistItem, TimeEntry, File
+- `entity_id` — ID de la entidad afectada
+- `action` — Acción ejecutada
+- `payload` — Datos mínimos necesarios
+- `actor_user_id`
+- `company_id`
+- `device_id`
+- `local_timestamp`
+- `sequence_number`
+- `status` — pending / synced / rejected
+- `hash` — integridad del evento
+
+---
+
+## 🧮 Orden y secuencia
+
+- Cada dispositivo mantiene un `sequence_number` incremental
+- El servidor valida:
+  - duplicados
+  - saltos de secuencia
+  - reenvíos
+- El orden de procesamiento es **estricto por dispositivo**
+
+---
+
+## 🔄 Tipos de eventos permitidos
+
+### Jobs
+- `job_started`
+- `job_paused`
+- `job_resumed`
+- `job_note_added`
+
+### Checklists
+- `checklist_item_completed`
+- `checklist_item_failed`
+- `checklist_item_note_added`
+
+### Tiempos
+- `time_entry_started`
+- `time_entry_stopped`
+- `time_entry_corrected`
+
+### Archivos
+- `file_captured`
+- `file_metadata_updated`
+
+---
+
+## ❌ Eventos explícitamente prohibidos offline
+
+- `job_completed`
+- `job_cancelled`
+- `accounting_entry_created`
+- `invoice_created`
+- `user_created`
+- `role_changed`
+
+Estos eventos **solo existen online**.
+
+---
+
+## 🔍 Validación en el servidor
+
+Cada evento es validado contra:
+
+- Estado actual de la entidad
+- Máquina de estados
+- Permisos del usuario
+- Empresa activa
+- Consistencia temporal
+- Duplicación
+
+Resultado:
+- **Aceptado** → aplicado + marcado como synced
+- **Rechazado** → marcado como rejected + auditado
+
+---
+
+## ⚠️ Manejo de conflictos
+
+Ejemplos:
+- Evento aplicado sobre estado inválido
+- Evento duplicado
+- Evento fuera de orden
+
+Regla:
+- El evento **no se reintenta automáticamente**
+- Se registra el rechazo
+- Se notifica al usuario
+
+---
+
+## 🧾 Auditoría
+
+Cada evento queda registrado con:
+
+- Payload original
+- Timestamps (local + server)
+- Resultado de validación
+- Motivo de rechazo (si aplica)
+
+Nunca se borra.
+
+---
+
+## 🧱 Persistencia local
+
+- Base local (SQLite / almacenamiento seguro)
+- Cola transaccional
+- Confirmación explícita de sync
+- Soporte para reintentos manuales
+
+---
+
+## 🔐 Seguridad
+
+- Eventos firmados con hash
+- Asociados a dispositivo y usuario
+- No se aceptan eventos sin autenticación previa válida
+
+---
+
+## ✅ Conclusión
+
+La cola de eventos offline en SISA:
+
+- No intenta “recrear estados”
+- No corrige el pasado
+- No asume autoridad
+
+Solo **narra hechos**.
+
+El servidor decide qué hechos son válidos.
+
+---
+
+
+===== ARCHIVO: offline-scope-boundary.md =====
+# Offline Scope Boundary — SISA
+
+## 🎯 Objetivo
+
+Definir **límites explícitos e inquebrantables** sobre qué **nunca** puede implementarse en modo offline dentro de SISA.
+
+Este documento existe para:
+- prevenir degradación arquitectónica
+- evitar “excepciones cómodas”
+- proteger el core del sistema a largo plazo
+
+---
+
+## 🧠 Principio absoluto
+
+> **El offline no define verdad, solo registra intentos.**
+
+Cualquier funcionalidad que contradiga este principio  
+**queda automáticamente fuera de alcance**.
+
+---
+
+## 🚫 Categorías prohibidas para Offline
+
+Las siguientes categorías **no pueden** operar offline, **bajo ningún escenario**.
+
+---
+
+### 1️⃣ Dinero y contabilidad
+
+Incluye (sin excepción):
+
+- Asientos contables
+- Pagos
+- Cobros
+- Facturación
+- Notas de crédito / débito
+- Cierres contables
+- Ajustes de balance
+- Reversiones financieras
+
+**Motivo**
+- Riesgo legal
+- Riesgo fiscal
+- Dependencias cruzadas
+- Impacto irreversible
+
+❌ Nunca offline  
+❌ Nunca “modo borrador” offline  
+❌ Nunca sincronización diferida
+
+---
+
+### 2️⃣ Estados terminales
+
+Estados finales o irreversibles:
+
+- `completed`
+- `cancelled`
+- `closed`
+- `archived`
+
+**Motivo**
+- Disparan efectos colaterales
+- Pueden cerrar flujos contables u operativos
+- Definen historia final
+
+✔ Pueden **proponerse** offline  
+❌ Nunca confirmarse offline
+
+---
+
+### 3️⃣ Datos maestros estructurales
+
+Incluye:
+
+- Empresas
+- Clientes
+- Proveedores
+- Productos / servicios
+- Carpetas raíz
+- Configuración global
+- Catálogos base
+
+**Motivo**
+- Alta dependencia
+- Riesgo de duplicación
+- Rompen integridad referencial
+
+❌ No se crean offline  
+❌ No se editan offline  
+❌ No se eliminan offline
+
+---
+
+### 4️⃣ Seguridad y permisos
+
+Incluye:
+
+- Creación de usuarios
+- Cambios de rol
+- Asignación de empresas
+- Revocación de accesos
+- Políticas de seguridad
+
+**Motivo**
+- Riesgo de escalamiento de privilegios
+- Violación de modelo de seguridad
+
+❌ Nunca offline  
+❌ Nunca cache editable
+
+---
+
+### 5️⃣ Configuración del sistema
+
+Incluye:
+
+- Parámetros globales
+- Reglas de negocio
+- Máquinas de estado
+- Flags de comportamiento
+
+**Motivo**
+- Cambios sistémicos
+- Impacto transversal
+- Difícil rollback
+
+---
+
+## ⚠️ Zonas grises explícitamente cerradas
+
+Las siguientes ideas **parecen razonables**, pero están **prohibidas**:
+
+- “Modo borrador offline” para facturas
+- “Pre-crear clientes offline”
+- “Cerrar trabajos offline y confirmar después”
+- “Editar permisos sin conexión”
+- “Sincronizar contabilidad al reconectar”
+
+Si alguien propone esto:
+👉 la respuesta es **NO**.
+
+---
+
+## ✅ Categorías permitidas Offline (recordatorio)
+
+El offline **solo** se admite para:
+
+- Registro de acciones operativas
+- Checklists
+- Tiempos trabajados
+- Archivos y evidencias
+- Observaciones
+- Lectura de datos de referencia
+
+Siempre bajo:
+- cola de eventos
+- validación server-side
+- auditoría
+
+---
+
+## 🧱 Regla de decisión rápida
+
+Ante cualquier feature nueva, preguntarse:
+
+1. ¿Afecta dinero?
+2. ¿Define una verdad del sistema?
+3. ¿Cambia permisos o estructura?
+4. ¿Es irreversible?
+
+Si la respuesta es **sí** a cualquiera:
+👉 **No es offline**.
+
+---
+
+## 🔐 Autoridad final
+
+- Este documento **tiene prioridad** sobre:
+  - decisiones de UX
+  - pedidos comerciales
+  - conveniencias técnicas
+- Ninguna feature puede violarlo sin **romper SISA**
+
+---
+
+## ✅ Conclusión
+
+El offline en SISA:
+
+- es acotado
+- es consciente
+- es responsable
+- es defendible
+
+Este boundary existe para que el sistema **no se desarme con el tiempo**.
+
+---
+
+
+===== ARCHIVO: offline-strategy.md =====
+# Offline Strategy — SISA
+
+## 🎯 Objetivo
+
+Definir **cuándo**, **dónde** y **por qué** SISA aplica el enfoque **offline-first**, evitando inconsistencias, riesgos contables o violaciones de reglas de negocio.
+
+SISA **no es offline-first por defecto**.  
+Es **offline-inteligente**.
+
+---
+
+## 🧠 Principio rector
+
+> **Si el dato representa un hecho ocurrido → puede ser offline-first**  
+> **Si el dato representa una verdad del sistema → es online-only**
+
+Este principio gobierna todas las decisiones offline del sistema.
+
+---
+
+## ✅ Casos donde SÍ aplica Offline-first
+
+### 1. Jobs en ejecución
+
+**Contexto**  
+Operación en campo con conectividad inestable o inexistente.
+
+**Acciones permitidas offline**
+- Visualización de Jobs asignados
+- Transiciones operativas:
+  - `planned → in_progress`
+  - `in_progress → paused`
+- Registro de observaciones
+- Asociación de participantes
+- Registro de tramos horarios
+- Adjuntar archivos
+
+**Estrategia**
+- Cache local estructurada
+- Cola de eventos append-only
+- Sincronización diferida con validación de estado
+
+---
+
+### 2. Checklists / Consignas operativas
+
+**Descripción**
+- Ítems ejecutables
+- Pueden realizarse múltiples veces por Job
+- Asociados al momento real de ejecución
+
+**Offline**
+- Ejecución completa offline
+- Persistencia local con timestamp real
+- Sincronización posterior
+
+---
+
+### 3. Tiempos trabajados
+
+**Características**
+- Registro de inicio / fin
+- Múltiples tramos por Job
+- Correcciones permitidas con historial
+
+**Offline**
+- Captura local
+- Validación en sincronización
+- Nunca se pisa historial existente
+
+---
+
+### 4. Captura de archivos
+
+**Ejemplos**
+- Fotos de equipos
+- Videos de fallas
+- Evidencias técnicas
+
+**Flujo**
+1. Guardado local
+2. Asociación de metadata
+3. Upload diferido
+4. Vinculación al Job / checklist correspondiente
+
+---
+
+### 5. Datos de referencia (solo lectura)
+
+**Ejemplos**
+- Clientes
+- Productos / servicios
+- Carpetas
+- Estados válidos
+
+**Restricción**
+- Lectura offline permitida
+- Creación y edición **solo online**
+
+---
+
+## ❌ Casos donde NO aplica Offline-first
+
+### 1. Contabilidad
+
+**Prohibido offline**
+- Asientos contables
+- Pagos
+- Facturación
+- Cierres
+- Ajustes
+
+**Motivo**
+- Riesgo financiero
+- Riesgo legal
+- Alta dependencia cruzada
+
+---
+
+### 2. Estados finales de Jobs
+
+Estados:
+- `completed`
+- `cancelled`
+
+**Regla**
+- Nunca se confirman offline
+- Pueden proponerse, pero requieren validación online
+
+---
+
+### 3. Usuarios y permisos
+
+**Incluye**
+- Creación de usuarios
+- Asignación de roles
+- Vinculación a empresas
+
+**Motivo**
+- Riesgo de escalamiento de privilegios
+- Seguridad del sistema
+
+---
+
+### 4. Datos maestros estructurales
+
+**Ejemplos**
+- Empresas
+- Clientes / proveedores
+- Productos / servicios
+- Configuración global
+- Estructuras contables
+
+**Regla**
+- Siempre online
+
+---
+
+## 🧱 Política de sincronización
+
+- Todos los eventos offline:
+  - Son **append-only**
+  - Nunca pisan datos existentes
+  - Se validan contra el estado actual
+- Conflictos:
+  - Se rechazan eventos inválidos
+  - Se registran para auditoría
+- El servidor es la **fuente de verdad final**
+
+---
+
+## 🔍 Auditoría
+
+Cada evento offline sincronizado:
+- Tiene timestamp local
+- Tiene timestamp de servidor
+- Guarda autor, contexto y entidad afectada
+- Nunca se elimina
+
+---
+
+## ⚠️ Advertencias
+
+- Offline-first mal aplicado **rompe sistemas**
+- No se admiten “excepciones por comodidad”
+- Si una acción afecta:
+  - dinero
+  - estructura
+  - permisos  
+  entonces **no es offline**
+
+---
+
+## ✅ Conclusión
+
+SISA aplica offline-first **solo donde agrega valor real**, sin comprometer:
+
+- consistencia
+- seguridad
+- auditabilidad
+- escalabilidad
+
+Offline no es libertad.  
+Es **responsabilidad controlada**.
+
+---
+
+
+===== ARCHIVO: README.md =====
+# SISA — Sistema Integrado de Servicios Administrativos
+
+SISA es una **plataforma ERP modular**, diseñada para **empresas reales**, con foco en **trazabilidad total**, **control operativo**, **contabilidad sólida** y **escalabilidad progresiva**.
+
+No es un MVP de juguete.  
+No es un clon liviano de otro sistema.  
+Es un **core empresarial serio**, pensado para crecer sin romperse.
+
+---
+
+## 🎯 Objetivo del sistema
+
+Construir un **núcleo administrativo y operativo** que permita:
+
+- Gestionar **empresas, clientes y proveedores**
+- Controlar **operaciones (Jobs)** con estados estrictos
+- Registrar **consignas, checklists y ejecución real**
+- Manejar **tiempos trabajados**, participantes y recursos
+- Integrar **contabilidad**, **facturación** y **auditoría**
+- Escalar hacia **automatización, IA y análisis avanzado**
+
+SISA está pensado como **base estructural**, no como producto descartable.
+
+---
+
+## 🧱 Principios no negociables
+
+- ❌ **Nada se borra físicamente**
+- ✅ Todo es **auditable**
+- ✅ Estados con **máquinas de estado estrictas**
+- ❌ No hay “excepciones mágicas”
+- ✅ El sistema refleja la **realidad operativa**
+- ✅ Diseño orientado a **crecimiento y mantenimiento**
+
+---
+
+## 🧩 Arquitectura general
+
+SISA se construye por **capas y módulos independientes**:
+
+### Backend
+- API REST
+- Arquitectura desacoplada
+- Validaciones duras
+- Control de permisos por rol y empresa
+- Registro histórico automático
+
+### Frontend
+- App móvil + web
+- Offline-first (cuando aplica)
+- Sincronización controlada
+- UI enfocada en operación real, no en estética vacía
+
+### Base de datos
+- Modelo relacional estricto
+- Historial por entidad
+- Estados explícitos
+- Relaciones claras y no ambiguas
+
+---
+
+## 📦 Módulos principales
+
+### 🏢 Empresas
+- Multi-empresa real
+- Usuarios con roles y permisos
+- Ningún usuario existe sin contexto empresarial
+
+### 👥 Clientes y Proveedores
+- Son **referencias a Company**
+- No se duplican datos
+- Uso de `client_company_id` / `provider_company_id`
+
+### 🛠 Jobs (Operaciones)
+- Núcleo operativo del sistema
+- No contiene fechas ni horarios directos
+- Se rige por **máquina de estados**
+- Estados finales inmutables
+
+Estados típicos:
+- planned
+- in_progress
+- paused
+- completed
+- cancelled
+
+Transiciones inválidas explícitas (ejemplos):
+- completed → *
+- cancelled → *
+- in_progress → planned
+- paused → planned
+
+### ✅ Checklists / Consignas
+- Ítems operativos ejecutables
+- Asociados al momento real de ejecución
+- Permiten múltiples ejecuciones por Job
+- Cada ejecución puede tener distintos participantes
+
+### ⏱ Tiempos y Horarios
+- Tablas separadas de Jobs
+- Registro real de inicio y fin
+- Múltiples tramos por trabajo
+- Correcciones posibles **con historial**
+
+### 📊 Contabilidad
+- Base contable sólida
+- Preparada para:
+  - facturación
+  - pagos
+  - reportes
+  - cierres
+- Diseñada como **core independiente**
+
+### 📁 Archivos
+- Vinculados a entidades
+- Metadata persistente
+- Soporte offline
+- Historial de cambios
+
+---
+
+## 🔐 Seguridad y control
+
+- Autenticación obligatoria
+- Permisos por rol
+- Acceso por empresa
+- Registro de acciones críticas
+- Sin endpoints “públicos” innecesarios
+
+---
+
+## 🧠 Filosofía de diseño
+
+SISA no intenta “hacer todo rápido”.  
+Intenta **hacer lo correcto primero**.
+
+- Primero estructura
+- Después velocidad
+- Luego automatización
+- Finalmente inteligencia (IA)
+
+---
+
+## 🚀 Estado del proyecto
+
+SISA se encuentra en **desarrollo activo**, con foco en:
+
+- Consolidación del core
+- Reglas duras
+- Documentación exhaustiva
+- Base contable profesional
+
+No se prioriza el marketing hasta que el sistema **aguante uso real**.
+
+---
+
+## ⚠️ Advertencia honesta
+
+Este sistema **no es para improvisados**.  
+Si buscás algo liviano, rápido y descartable, **este no es el proyecto**.
+
+Si buscás:
+- Control real
+- Escalabilidad
+- Orden
+- Longevidad
+
+Entonces estás en el lugar correcto.
+
+---
+
+## 📄 Licencia
+
+Pendiente de definición.
+El core está pensado para uso profesional y comercial.
+
+---
+
+## ✍️ Autor
+
+Desarrollado por **Mauro Massa**  
+Proyecto SISA — Core ERP
+
+
+
+
+
+
+
+===== ARCHIVO: sync-conflict-policy.md =====
+# Sync Conflict Policy — SISA
+
+## 🎯 Objetivo
+
+Definir **cómo SISA detecta, clasifica y resuelve conflictos** durante la sincronización de eventos offline, garantizando:
+
+- consistencia
+- auditabilidad
+- previsibilidad
+- ausencia de efectos colaterales silenciosos
+
+En SISA **no existen conflictos “automágicos”**.
+
+---
+
+## 🧠 Principio rector
+
+> **El servidor es la única fuente de verdad.**  
+> El cliente offline **propone hechos**, el servidor **decide validez**.
+
+---
+
+## 🧩 Qué es un conflicto
+
+Un conflicto ocurre cuando un **evento offline**:
+
+- contradice el estado actual del sistema
+- viola una regla de negocio
+- llega fuera de contexto temporal
+- fue generado sin permisos válidos
+- ya fue aplicado (duplicado)
+
+---
+
+## 🧱 Clasificación de conflictos
+
+### 1️⃣ Conflicto de estado
+
+**Descripción**  
+El evento intenta aplicarse sobre un estado inválido.
+
+**Ejemplo**
+- Evento: `job_paused`
+- Estado actual: `planned`
+
+**Resolución**
+- ❌ Evento rechazado
+- 📄 Motivo registrado
+- 🔔 Usuario notificado
+
+---
+
+### 2️⃣ Conflicto de transición prohibida
+
+**Descripción**  
+La acción viola la máquina de estados.
+
+**Ejemplo**
+- Evento: `job_resumed`
+- Estado actual: `completed`
+
+**Resolución**
+- ❌ Evento rechazado
+- 📄 Auditoría completa
+- ❌ No se reintenta
+
+---
+
+### 3️⃣ Conflicto de permisos
+
+**Descripción**
+El usuario no tiene permisos válidos al momento de sincronizar.
+
+**Ejemplo**
+- Usuario removido de la empresa
+- Rol degradado
+
+**Resolución**
+- ❌ Evento rechazado
+- 🔒 Seguridad prioritaria
+- 📄 Registro de intento
+
+---
+
+### 4️⃣ Conflicto temporal
+
+**Descripción**
+El evento presenta incoherencias de tiempo.
+
+**Ejemplos**
+- Fin antes del inicio
+- Superposición imposible de tramos
+- Timestamp inválido
+
+**Resolución**
+- ❌ Evento rechazado
+- 📄 Se conserva el payload original
+- 🔔 Usuario informado
+
+---
+
+### 5️⃣ Conflicto de duplicación
+
+**Descripción**
+El evento ya fue procesado.
+
+**Detección**
+- `event_id`
+- `hash`
+- `sequence_number`
+
+**Resolución**
+- ⚠️ Evento ignorado
+- ✔ Marcado como synced
+- 📄 Sin efectos colaterales
+
+---
+
+### 6️⃣ Conflicto estructural
+
+**Descripción**
+La entidad referenciada ya no existe o cambió su contexto.
+
+**Ejemplo**
+- Job eliminado virtualmente
+- Checklist deshabilitado
+
+**Resolución**
+- ❌ Evento rechazado
+- 📄 Registro obligatorio
+
+---
+
+## 🔄 Política de resolución
+
+| Tipo de conflicto | Acción |
+|------------------|-------|
+| Estado inválido | Rechazo |
+| Transición prohibida | Rechazo |
+| Permisos | Rechazo |
+| Temporal | Rechazo |
+| Duplicado | Ignorar |
+| Estructural | Rechazo |
+
+❗ **Nunca se corrige un evento automáticamente**  
+❗ **Nunca se reescribe la historia**
+
+---
+
+## 🔁 Reintentos
+
+- ❌ No hay reintentos automáticos
+- ✔ El usuario puede:
+  - revisar el motivo
+  - repetir la acción manualmente
+  - generar un nuevo evento válido
+
+Cada reintento es **un evento nuevo**, no una modificación.
+
+---
+
+## 🧾 Auditoría de conflictos
+
+Todo conflicto genera:
+
+- ID del evento
+- Tipo de conflicto
+- Payload original
+- Usuario
+- Empresa
+- Dispositivo
+- Timestamp local y de servidor
+- Motivo técnico del rechazo
+
+Estos registros **no se eliminan**.
+
+---
+
+## 🔔 Comunicación al usuario
+
+El sistema debe:
+
+- Informar claramente el rechazo
+- Explicar el motivo en lenguaje operativo
+- Evitar mensajes genéricos
+
+Ejemplo válido:
+> “El trabajo ya fue completado por otro usuario antes de sincronizar.”
+
+Ejemplo inválido:
+> “Error de sincronización.”
+
+---
+
+## 🔐 Seguridad
+
+- Un evento rechazado **no degrada** el sistema
+- No se bloquea la cola completa
+- Cada evento se evalúa individualmente
+- No hay escalamiento de privilegios offline
+
+---
+
+## 🧠 Filosofía final
+
+SISA **prefiere rechazar un evento válido**  
+antes que **aceptar uno incorrecto**.
+
+La integridad del sistema **está por encima de la comodidad del usuario**.
+
+---
+
+## ✅ Conclusión
+
+La política de conflictos de SISA garantiza que:
+
+- el offline no corrompe el core
+- los errores son visibles
+- el sistema es defendible
+- la historia nunca se reescribe
+
+Sin esta política, el offline es una mentira peligrosa.
+
+---
+
+
+===== ARCHIVO: sync-conflicts-schema.md =====
+# sync_conflicts — Schema Definition (SISA)
+
+## 🎯 Objetivo
+
+Definir la estructura de la tabla `sync_conflicts`, encargada de **registrar de forma inmutable** todos los conflictos detectados durante la sincronización de eventos offline.
+
+Esta tabla es **parte del sistema de auditoría** y **no admite borrado ni edición**.
+
+---
+
+## 🧠 Principios de diseño
+
+- Append-only
+- Auditoría completa
+- Multi-empresa real
+- No depende del estado actual para interpretarse
+- Reconstrucción histórica posible sin ambigüedades
+
+---
+
+## 🗄 Tabla: sync_conflicts
+
+### Campos obligatorios
+
+| Campo | Tipo | Descripción |
+|-----|-----|------------|
+| `id` | UUID | Identificador único del registro de conflicto |
+| `event_id` | UUID | ID del evento offline que generó el conflicto |
+| `company_id` | UUID | Empresa en la que ocurrió el conflicto |
+| `entity_type` | VARCHAR | Tipo de entidad afectada (job, checklist_item, time_entry, file, etc.) |
+| `entity_id` | UUID | ID de la entidad afectada |
+| `conflict_type` | VARCHAR | Clasificación del conflicto |
+| `action` | VARCHAR | Acción intentada (ej: job_paused) |
+| `payload` | JSON | Payload original del evento offline |
+| `user_id` | UUID | Usuario que generó el evento |
+| `device_id` | VARCHAR | Identificador del dispositivo |
+| `local_timestamp` | DATETIME | Timestamp generado en el dispositivo |
+| `server_timestamp` | DATETIME | Timestamp del servidor al procesar |
+| `rejection_reason` | TEXT | Motivo técnico del rechazo |
+| `created_at` | DATETIME | Momento de inserción del registro |
+
+---
+
+## 🧾 conflict_type — valores esperados
+
+`conflict_type` **no es libre**, debe responder a un set controlado.
+
+Valores recomendados:
+
+- `invalid_state`
+- `invalid_transition`
+- `permission_denied`
+- `temporal_inconsistency`
+- `duplicate_event`
+- `structural_conflict`
+- `unknown_entity`
+- `validation_error`
+
+> ❗ No se usan enums rígidos para permitir evolución controlada.
+
+---
+
+## 🔗 Relaciones conceptuales
+
+- `event_id` → offline_events.event_id
+- `company_id` → companies.id
+- `user_id` → users.id
+- `entity_id` → entidad correspondiente según `entity_type`
+
+⚠️ **No se usan foreign keys obligatorias**  
+Motivo: la entidad puede haber sido eliminada virtualmente.
+
+---
+
+## 🧱 Reglas duras
+
+- Ningún registro se elimina
+- Ningún registro se modifica
+- No se reutiliza `event_id`
+- Un mismo evento genera **máximo un conflicto**
+- La ausencia de `company_id` invalida el registro
+
+---
+
+## 🔍 Casos de uso cubiertos
+
+- Auditoría legal
+- Debugging técnico
+- Soporte al usuario
+- Análisis de fallas offline
+- Métricas de calidad de sincronización
+
+---
+
+## ⚠️ Errores que este schema evita
+
+- Conflictos sin contexto empresarial
+- Logs ambiguos
+- Reescritura de historia
+- Debugging basado en suposiciones
+- “Funcionó en mi teléfono”
+
+---
+
+## ✅ Conclusión
+
+La tabla `sync_conflicts` es:
+
+- un registro de verdad
+- una defensa técnica
+- una herramienta legal
+- un seguro contra corrupción silenciosa
+
+Si esta tabla existe y se respeta, el offline **no miente**.
+
+---
+
+
+===== ARCHIVO: xxx_resultado_unificado.txt =====
+===== ARCHIVO: FASES.md =====
+🧱 1) NÚCLEO (Core Platform)
+📌 Identidad, seguridad, multiempresa, auditoría, archivos.
+
+Es el cimiento obligatorio.
+
+Incluye:
+
+Users
+
+User Security Events
+
+User Sessions
+
+Companies
+
+Memberships
+
+Roles
+
+Legal Acceptances
+
+Audit Log
+
+Company Settings
+
+Files + File Links
+
+Instalación inicial
+
+Login / Logout
+
+Regla 4equim
+
+Estados lógicos
+
+Multiempresa real
+
+👉 Sin esto, no existe SISA.
+Sin esto, no podés construir ERP.
+Sin esto, no podés garantizar contabilidad.
+
+Este módulo SIEMPRE VA PRIMERO.
+
+📘 2) NEGOCIO (ERP Operativo)
+📌 Registra hechos reales, NO los interpreta contablemente.
+
+Acá va todo lo operativo del día a día:
+
+Jobs (órdenes de trabajo)
+
+Job Time Entries
+
+Job Checklist Items
+
+Quotes
+
+Sales
+
+Purchases
+
+Invoices
+
+Receipts
+
+Payments
+
+Adjustments
+
+Estados, lifecycles, auditorías
+
+Validaciones cruzadas ERP
+
+👉 Fase 2 produce eventos operativos inmutables.
+These events are the raw material of accounting.
+
+Este módulo SIEMPRE VA DESPUÉS DEL NÚCLEO
+y SIEMPRE VA ANTES de la contabilidad.
+
+Si lo invertís → te explota la consistencia temporal.
+
+📙 3) CONTABILIDAD (ACCCORE – Fase 3)
+📌 Interpreta los eventos operativos del ERP y produce información contable real.
+
+Incluye:
+
+Plan de cuentas
+
+Asientos contables
+
+Centros de costo
+
+IVA
+
+Percepciones / Retenciones
+
+Cierres contables
+
+Mayor analítico
+
+Balance, PyG
+
+Devengamientos
+
+Contabilidad por empresa
+
+Auditoría contable
+
+Reglas fiscales
+
+👉 Contabilidad NO puede existir antes del ERP.
+NUNCA se generan asientos directamente desde módulos operativos.
+SIEMPRE debe hacerse desde eventos auditables.
+
+🎯 Resumen brutalmente claro
+✔ 1) CORE
+
+Fundación del sistema
+(lo que hace posible todo)
+
+✔ 2) NEGOCIO / ERP
+
+Registra hechos
+(no interpreta nada)
+
+✔ 3) CONTABILIDAD
+
+Interpreta hechos → genera asientos
+
+🎯 Orden obligatorio
+
+1️⃣ Core Platform
+2️⃣ ERP Operativo (Negocio)
+3️⃣ Contabilidad (ACCCORE)
+
+===== ARCHIVO: offline-events.md =====
+# Offline Events Queue — SISA
+
+## 🎯 Objetivo
+
+Definir el **modelo de cola de eventos offline** utilizado por SISA para registrar acciones realizadas sin conectividad y sincronizarlas de forma **segura**, **auditable** y **determinista**.
+
+Esta cola es la **única vía válida** para introducir cambios offline al sistema.
+
+---
+
+## 🧠 Principios no negociables
+
+- La cola es **append-only**
+- Los eventos **no se editan**
+- Los eventos **no se eliminan**
+- El servidor es la **fuente de verdad final**
+- El orden importa
+- La validación siempre ocurre **en el servidor**
+
+---
+
+## 🧱 Concepto central
+
+Un **Offline Event** representa **una acción del usuario**, no un estado final.
+
+Ejemplo:
+- ✔ “El usuario inició el trabajo”
+- ❌ “El trabajo quedó en progreso”
+
+---
+
+## 🧾 Estructura lógica de un Offline Event
+
+Cada evento contiene:
+
+- `event_id` — UUID único
+- `entity_type` — Job, ChecklistItem, TimeEntry, File
+- `entity_id` — ID de la entidad afectada
+- `action` — Acción ejecutada
+- `payload` — Datos mínimos necesarios
+- `actor_user_id`
+- `company_id`
+- `device_id`
+- `local_timestamp`
+- `sequence_number`
+- `status` — pending / synced / rejected
+- `hash` — integridad del evento
+
+---
+
+## 🧮 Orden y secuencia
+
+- Cada dispositivo mantiene un `sequence_number` incremental
+- El servidor valida:
+  - duplicados
+  - saltos de secuencia
+  - reenvíos
+- El orden de procesamiento es **estricto por dispositivo**
+
+---
+
+## 🔄 Tipos de eventos permitidos
+
+### Jobs
+- `job_started`
+- `job_paused`
+- `job_resumed`
+- `job_note_added`
+
+### Checklists
+- `checklist_item_completed`
+- `checklist_item_failed`
+- `checklist_item_note_added`
+
+### Tiempos
+- `time_entry_started`
+- `time_entry_stopped`
+- `time_entry_corrected`
+
+### Archivos
+- `file_captured`
+- `file_metadata_updated`
+
+---
+
+## ❌ Eventos explícitamente prohibidos offline
+
+- `job_completed`
+- `job_cancelled`
+- `accounting_entry_created`
+- `invoice_created`
+- `user_created`
+- `role_changed`
+
+Estos eventos **solo existen online**.
+
+---
+
+## 🔍 Validación en el servidor
+
+Cada evento es validado contra:
+
+- Estado actual de la entidad
+- Máquina de estados
+- Permisos del usuario
+- Empresa activa
+- Consistencia temporal
+- Duplicación
+
+Resultado:
+- **Aceptado** → aplicado + marcado como synced
+- **Rechazado** → marcado como rejected + auditado
+
+---
+
+## ⚠️ Manejo de conflictos
+
+Ejemplos:
+- Evento aplicado sobre estado inválido
+- Evento duplicado
+- Evento fuera de orden
+
+Regla:
+- El evento **no se reintenta automáticamente**
+- Se registra el rechazo
+- Se notifica al usuario
+
+---
+
+## 🧾 Auditoría
+
+Cada evento queda registrado con:
+
+- Payload original
+- Timestamps (local + server)
+- Resultado de validación
+- Motivo de rechazo (si aplica)
+
+Nunca se borra.
+
+---
+
+## 🧱 Persistencia local
+
+- Base local (SQLite / almacenamiento seguro)
+- Cola transaccional
+- Confirmación explícita de sync
+- Soporte para reintentos manuales
+
+---
+
+## 🔐 Seguridad
+
+- Eventos firmados con hash
+- Asociados a dispositivo y usuario
+- No se aceptan eventos sin autenticación previa válida
+
+---
+
+## ✅ Conclusión
+
+La cola de eventos offline en SISA:
+
+- No intenta “recrear estados”
+- No corrige el pasado
+- No asume autoridad
+
+Solo **narra hechos**.
+
+El servidor decide qué hechos son válidos.
+
+---
+
+
+===== ARCHIVO: offline-scope-boundary.md =====
+# Offline Scope Boundary — SISA
+
+## 🎯 Objetivo
+
+Definir **límites explícitos e inquebrantables** sobre qué **nunca** puede implementarse en modo offline dentro de SISA.
+
+Este documento existe para:
+- prevenir degradación arquitectónica
+- evitar “excepciones cómodas”
+- proteger el core del sistema a largo plazo
+
+---
+
+## 🧠 Principio absoluto
+
+> **El offline no define verdad, solo registra intentos.**
+
+Cualquier funcionalidad que contradiga este principio  
+**queda automáticamente fuera de alcance**.
+
+---
+
+## 🚫 Categorías prohibidas para Offline
+
+Las siguientes categorías **no pueden** operar offline, **bajo ningún escenario**.
+
+---
+
+### 1️⃣ Dinero y contabilidad
+
+Incluye (sin excepción):
+
+- Asientos contables
+- Pagos
+- Cobros
+- Facturación
+- Notas de crédito / débito
+- Cierres contables
+- Ajustes de balance
+- Reversiones financieras
+
+**Motivo**
+- Riesgo legal
+- Riesgo fiscal
+- Dependencias cruzadas
+- Impacto irreversible
+
+❌ Nunca offline  
+❌ Nunca “modo borrador” offline  
+❌ Nunca sincronización diferida
+
+---
+
+### 2️⃣ Estados terminales
+
+Estados finales o irreversibles:
+
+- `completed`
+- `cancelled`
+- `closed`
+- `archived`
+
+**Motivo**
+- Disparan efectos colaterales
+- Pueden cerrar flujos contables u operativos
+- Definen historia final
+
+✔ Pueden **proponerse** offline  
+❌ Nunca confirmarse offline
+
+---
+
+### 3️⃣ Datos maestros estructurales
+
+Incluye:
+
+- Empresas
+- Clientes
+- Proveedores
+- Productos / servicios
+- Carpetas raíz
+- Configuración global
+- Catálogos base
+
+**Motivo**
+- Alta dependencia
+- Riesgo de duplicación
+- Rompen integridad referencial
+
+❌ No se crean offline  
+❌ No se editan offline  
+❌ No se eliminan offline
+
+---
+
+### 4️⃣ Seguridad y permisos
+
+Incluye:
+
+- Creación de usuarios
+- Cambios de rol
+- Asignación de empresas
+- Revocación de accesos
+- Políticas de seguridad
+
+**Motivo**
+- Riesgo de escalamiento de privilegios
+- Violación de modelo de seguridad
+
+❌ Nunca offline  
+❌ Nunca cache editable
+
+---
+
+### 5️⃣ Configuración del sistema
+
+Incluye:
+
+- Parámetros globales
+- Reglas de negocio
+- Máquinas de estado
+- Flags de comportamiento
+
+**Motivo**
+- Cambios sistémicos
+- Impacto transversal
+- Difícil rollback
+
+---
+
+## ⚠️ Zonas grises explícitamente cerradas
+
+Las siguientes ideas **parecen razonables**, pero están **prohibidas**:
+
+- “Modo borrador offline” para facturas
+- “Pre-crear clientes offline”
+- “Cerrar trabajos offline y confirmar después”
+- “Editar permisos sin conexión”
+- “Sincronizar contabilidad al reconectar”
+
+Si alguien propone esto:
+👉 la respuesta es **NO**.
+
+---
+
+## ✅ Categorías permitidas Offline (recordatorio)
+
+El offline **solo** se admite para:
+
+- Registro de acciones operativas
+- Checklists
+- Tiempos trabajados
+- Archivos y evidencias
+- Observaciones
+- Lectura de datos de referencia
+
+Siempre bajo:
+- cola de eventos
+- validación server-side
+- auditoría
+
+---
+
+## 🧱 Regla de decisión rápida
+
+Ante cualquier feature nueva, preguntarse:
+
+1. ¿Afecta dinero?
+2. ¿Define una verdad del sistema?
+3. ¿Cambia permisos o estructura?
+4. ¿Es irreversible?
+
+Si la respuesta es **sí** a cualquiera:
+👉 **No es offline**.
+
+---
+
+## 🔐 Autoridad final
+
+- Este documento **tiene prioridad** sobre:
+  - decisiones de UX
+  - pedidos comerciales
+  - conveniencias técnicas
+- Ninguna feature puede violarlo sin **romper SISA**
+
+---
+
+## ✅ Conclusión
+
+El offline en SISA:
+
+- es acotado
+- es consciente
+- es responsable
+- es defendible
+
+Este boundary existe para que el sistema **no se desarme con el tiempo**.
+
+---
+
+
+===== ARCHIVO: offline-strategy.md =====
+# Offline Strategy — SISA
+
+## 🎯 Objetivo
+
+Definir **cuándo**, **dónde** y **por qué** SISA aplica el enfoque **offline-first**, evitando inconsistencias, riesgos contables o violaciones de reglas de negocio.
+
+SISA **no es offline-first por defecto**.  
+Es **offline-inteligente**.
+
+---
+
+## 🧠 Principio rector
+
+> **Si el dato representa un hecho ocurrido → puede ser offline-first**  
+> **Si el dato representa una verdad del sistema → es online-only**
+
+Este principio gobierna todas las decisiones offline del sistema.
+
+---
+
+## ✅ Casos donde SÍ aplica Offline-first
+
+### 1. Jobs en ejecución
+
+**Contexto**  
+Operación en campo con conectividad inestable o inexistente.
+
+**Acciones permitidas offline**
+- Visualización de Jobs asignados
+- Transiciones operativas:
+  - `planned → in_progress`
+  - `in_progress → paused`
+- Registro de observaciones
+- Asociación de participantes
+- Registro de tramos horarios
+- Adjuntar archivos
+
+**Estrategia**
+- Cache local estructurada
+- Cola de eventos append-only
+- Sincronización diferida con validación de estado
+
+---
+
+### 2. Checklists / Consignas operativas
+
+**Descripción**
+- Ítems ejecutables
+- Pueden realizarse múltiples veces por Job
+- Asociados al momento real de ejecución
+
+**Offline**
+- Ejecución completa offline
+- Persistencia local con timestamp real
+- Sincronización posterior
+
+---
+
+### 3. Tiempos trabajados
+
+**Características**
+- Registro de inicio / fin
+- Múltiples tramos por Job
+- Correcciones permitidas con historial
+
+**Offline**
+- Captura local
+- Validación en sincronización
+- Nunca se pisa historial existente
+
+---
+
+### 4. Captura de archivos
+
+**Ejemplos**
+- Fotos de equipos
+- Videos de fallas
+- Evidencias técnicas
+
+**Flujo**
+1. Guardado local
+2. Asociación de metadata
+3. Upload diferido
+4. Vinculación al Job / checklist correspondiente
+
+---
+
+### 5. Datos de referencia (solo lectura)
+
+**Ejemplos**
+- Clientes
+- Productos / servicios
+- Carpetas
+- Estados válidos
+
+**Restricción**
+- Lectura offline permitida
+- Creación y edición **solo online**
+
+---
+
+## ❌ Casos donde NO aplica Offline-first
+
+### 1. Contabilidad
+
+**Prohibido offline**
+- Asientos contables
+- Pagos
+- Facturación
+- Cierres
+- Ajustes
+
+**Motivo**
+- Riesgo financiero
+- Riesgo legal
+- Alta dependencia cruzada
+
+---
+
+### 2. Estados finales de Jobs
+
+Estados:
+- `completed`
+- `cancelled`
+
+**Regla**
+- Nunca se confirman offline
+- Pueden proponerse, pero requieren validación online
+
+---
+
+### 3. Usuarios y permisos
+
+**Incluye**
+- Creación de usuarios
+- Asignación de roles
+- Vinculación a empresas
+
+**Motivo**
+- Riesgo de escalamiento de privilegios
+- Seguridad del sistema
+
+---
+
+### 4. Datos maestros estructurales
+
+**Ejemplos**
+- Empresas
+- Clientes / proveedores
+- Productos / servicios
+- Configuración global
+- Estructuras contables
+
+**Regla**
+- Siempre online
+
+---
+
+## 🧱 Política de sincronización
+
+- Todos los eventos offline:
+  - Son **append-only**
+  - Nunca pisan datos existentes
+  - Se validan contra el estado actual
+- Conflictos:
+  - Se rechazan eventos inválidos
+  - Se registran para auditoría
+- El servidor es la **fuente de verdad final**
+
+---
+
+## 🔍 Auditoría
+
+Cada evento offline sincronizado:
+- Tiene timestamp local
+- Tiene timestamp de servidor
+- Guarda autor, contexto y entidad afectada
+- Nunca se elimina
+
+---
+
+## ⚠️ Advertencias
+
+- Offline-first mal aplicado **rompe sistemas**
+- No se admiten “excepciones por comodidad”
+- Si una acción afecta:
+  - dinero
+  - estructura
+  - permisos  
+  entonces **no es offline**
+
+---
+
+## ✅ Conclusión
+
+SISA aplica offline-first **solo donde agrega valor real**, sin comprometer:
+
+- consistencia
+- seguridad
+- auditabilidad
+- escalabilidad
+
+Offline no es libertad.  
+Es **responsabilidad controlada**.
+
+---
+
+
+===== ARCHIVO: README.md =====
+# SISA — Sistema Integrado de Servicios Administrativos
+
+SISA es una **plataforma ERP modular**, diseñada para **empresas reales**, con foco en **trazabilidad total**, **control operativo**, **contabilidad sólida** y **escalabilidad progresiva**.
+
+No es un MVP de juguete.  
+No es un clon liviano de otro sistema.  
+Es un **core empresarial serio**, pensado para crecer sin romperse.
+
+---
+
+## 🎯 Objetivo del sistema
+
+Construir un **núcleo administrativo y operativo** que permita:
+
+- Gestionar **empresas, clientes y proveedores**
+- Controlar **operaciones (Jobs)** con estados estrictos
+- Registrar **consignas, checklists y ejecución real**
+- Manejar **tiempos trabajados**, participantes y recursos
+- Integrar **contabilidad**, **facturación** y **auditoría**
+- Escalar hacia **automatización, IA y análisis avanzado**
+
+SISA está pensado como **base estructural**, no como producto descartable.
+
+---
+
+## 🧱 Principios no negociables
+
+- ❌ **Nada se borra físicamente**
+- ✅ Todo es **auditable**
+- ✅ Estados con **máquinas de estado estrictas**
+- ❌ No hay “excepciones mágicas”
+- ✅ El sistema refleja la **realidad operativa**
+- ✅ Diseño orientado a **crecimiento y mantenimiento**
+
+---
+
+## 🧩 Arquitectura general
+
+SISA se construye por **capas y módulos independientes**:
+
+### Backend
+- API REST
+- Arquitectura desacoplada
+- Validaciones duras
+- Control de permisos por rol y empresa
+- Registro histórico automático
+
+### Frontend
+- App móvil + web
+- Offline-first (cuando aplica)
+- Sincronización controlada
+- UI enfocada en operación real, no en estética vacía
+
+### Base de datos
+- Modelo relacional estricto
+- Historial por entidad
+- Estados explícitos
+- Relaciones claras y no ambiguas
+
+---
+
+## 📦 Módulos principales
+
+### 🏢 Empresas
+- Multi-empresa real
+- Usuarios con roles y permisos
+- Ningún usuario existe sin contexto empresarial
+
+### 👥 Clientes y Proveedores
+- Son **referencias a Company**
+- No se duplican datos
+- Uso de `client_company_id` / `provider_company_id`
+
+### 🛠 Jobs (Operaciones)
+- Núcleo operativo del sistema
+- No contiene fechas ni horarios directos
+- Se rige por **máquina de estados**
+- Estados finales inmutables
+
+Estados típicos:
+- planned
+- in_progress
+- paused
+- completed
+- cancelled
+
+Transiciones inválidas explícitas (ejemplos):
+- completed → *
+- cancelled → *
+- in_progress → planned
+- paused → planned
+
+### ✅ Checklists / Consignas
+- Ítems operativos ejecutables
+- Asociados al momento real de ejecución
+- Permiten múltiples ejecuciones por Job
+- Cada ejecución puede tener distintos participantes
+
+### ⏱ Tiempos y Horarios
+- Tablas separadas de Jobs
+- Registro real de inicio y fin
+- Múltiples tramos por trabajo
+- Correcciones posibles **con historial**
+
+### 📊 Contabilidad
+- Base contable sólida
+- Preparada para:
+  - facturación
+  - pagos
+  - reportes
+  - cierres
+- Diseñada como **core independiente**
+
+### 📁 Archivos
+- Vinculados a entidades
+- Metadata persistente
+- Soporte offline
+- Historial de cambios
+
+---
+
+## 🔐 Seguridad y control
+
+- Autenticación obligatoria
+- Permisos por rol
+- Acceso por empresa
+- Registro de acciones críticas
+- Sin endpoints “públicos” innecesarios
+
+---
+
+## 🧠 Filosofía de diseño
+
+SISA no intenta “hacer todo rápido”.  
+Intenta **hacer lo correcto primero**.
+
+- Primero estructura
+- Después velocidad
+- Luego automatización
+- Finalmente inteligencia (IA)
+
+---
+
+## 🚀 Estado del proyecto
+
+SISA se encuentra en **desarrollo activo**, con foco en:
+
+- Consolidación del core
+- Reglas duras
+- Documentación exhaustiva
+- Base contable profesional
+
+No se prioriza el marketing hasta que el sistema **aguante uso real**.
+
+---
+
+## ⚠️ Advertencia honesta
+
+Este sistema **no es para improvisados**.  
+Si buscás algo liviano, rápido y descartable, **este no es el proyecto**.
+
+Si buscás:
+- Control real
+- Escalabilidad
+- Orden
+- Longevidad
+
+Entonces estás en el lugar correcto.
+
+---
+
+## 📄 Licencia
+
+Pendiente de definición.
+El core está pensado para uso profesional y comercial.
+
+---
+
+## ✍️ Autor
+
+Desarrollado por **Mauro Massa**  
+Proyecto SISA — Core ERP
+
+
+
+
+
+
+
+===== ARCHIVO: 📘 FASE 1 - CORE PLATFORM.md =====
+
+
+# **📘 CORE PLATFORM** 
+
+**Modelo \+ Reglas \+ Entidades \+ Ciclos de vida \+ Seguridad \+ Auditoría \+ Instalación inicial**  
+**Sin ambigüedades • Sin código • Sin implementación • Solo contrato de arquitectura**
+
+---
+
+# **🧱 0\) PRINCIPIOS INMUTABLES**
+
+## **0.1 — NO EXISTE EL BORRADO FÍSICO**
+
+Todo dato crítico **nunca se elimina físicamente**, solo cambia de estado:  
+`active`, `inactive`, `archived`, `deleted`.
+
+Toda tabla core debe tener:
+
+* `status`  
+* `deleted_at`  
+* `created_at`  
+* `updated_at`
+
+## **0.2 — REGLA PADRE–HIJO (4EQUIM)**
+
+Un registro **NO puede eliminarse** si tiene:
+
+* hijos activos  
+* contenido asociado  
+* dependencias lógicas activas
+
+Opciones permitidas:
+
+1. eliminar primero los hijos  
+2. operación explícita “eliminar todo el contenido”  
+3. rechazar la operación
+
+## **0.3 — AUDITORÍA UNIVERSAL**
+
+Todo cambio relevante → audit\_log  
+Nunca se modifica  
+Nunca se elimina  
+Append-only
+
+## **0.4 — INSTALACIÓN INICIAL**
+
+Antes de estar instalado:
+
+* `APP_INSTALLED = false`  
+* Primer usuario creado → `superadmin`  
+* Luego el endpoint queda bloqueado permanentemente
+
+## **0.5 — MULTIEMPRESA REAL**
+
+Todo dato operativo requiere `company_id` (cuando corresponde).  
+Una sesión siempre está asociada a un contexto de empresa activa.
+
+---
+
+# **🗂 ENTIDADES UNIFICADAS (POST-FUSIÓN)**
+
+**Estas son las tablas DEFINITIVAS**.  
+Si no aparece acá, NO forma parte del Core.
+
+Voy a fusionar donde corresponde para mayor coherencia, simplicidad y potencia.
+
+---
+
+# **1️⃣ USERS (usuarios del sistema)**
+
+## **Propósito**
+
+Identidad digital global. Sin empresa asociada. Nunca se borra físicamente.
+
+## **Estados**
+
+`pending`, `active`, `locked`, `disabled`, `deleted`
+
+## **Tabla final (completa)**
+
+Incluye **los campos más completos y seguros** de todas las versiones previas.
+
+users (  
+  id CHAR(36) PRIMARY KEY,  
+  email VARCHAR(255) NOT NULL UNIQUE,  
+  password\_hash VARCHAR(255) NOT NULL,
+
+  status ENUM('pending','active','locked','disabled','deleted') NOT NULL DEFAULT 'pending',  
+  locked\_until DATETIME(6) NULL,  
+  email\_verified\_at DATETIME(6) NULL,  
+  deleted\_at DATETIME(6) NULL,
+
+  created\_at DATETIME(6) NOT NULL,  
+  updated\_at DATETIME(6) NOT NULL  
+)
+
+---
+
+# **2️⃣ USER\_SECURITY\_EVENTS (FUSIÓN: login\_attempts \+ seguridad de acceso)**
+
+💡 En vez de dos tablas separadas, lo fusionamos en una estructura de **eventos de seguridad universal**, más poderosa, más auditable y más escalable.
+
+Esto permite registrar:
+
+* login attempts  
+* bloqueos automáticos  
+* desbloqueos  
+* resets  
+* captchas  
+* eventos de credenciales
+
+## **Tabla final**
+
+user\_security\_events (  
+  id CHAR(36) PRIMARY KEY,  
+  user\_id CHAR(36) NULL,  
+  email VARCHAR(255) NOT NULL,  
+  ip\_address VARCHAR(100),  
+  user\_agent VARCHAR(500),
+
+  event\_type ENUM(  
+    'login\_success',  
+    'login\_failed',  
+    'password\_reset\_requested',  
+    'password\_reset\_used',  
+    'email\_verification\_sent',  
+    'email\_verified',  
+    'auto\_lock',  
+    'auto\_unlock',  
+    'manual\_lock',  
+    'manual\_unlock'  
+  ) NOT NULL,
+
+  metadata JSON,  
+  created\_at DATETIME(6) NOT NULL,
+
+  INDEX (email),  
+  INDEX (user\_id),  
+  INDEX (event\_type),  
+  INDEX (created\_at)  
+)
+
+## **Beneficios**
+
+* sustituye login\_attempts  
+* registra todos los eventos de seguridad  
+* análisis avanzado de ataques  
+* lista para machine learning / anomaly detection
+
+---
+
+# **3️⃣ USER\_ROLES (roles globales)**
+
+user\_roles (  
+  id CHAR(36) PRIMARY KEY,  
+  user\_id CHAR(36) NOT NULL,  
+  role ENUM('superadmin','system') NOT NULL,  
+  status ENUM('active','deleted') NOT NULL DEFAULT 'active',  
+  deleted\_at DATETIME(6),  
+  created\_at DATETIME(6),  
+  updated\_at DATETIME(6)  
+)
+
+---
+
+# **4️⃣ USER\_SESSIONS (sesiones del usuario)**
+
+## **Mejorada (fusión de variantes)**
+
+Incluye usuario, empresa activa y seguridad adicional.
+
+user\_sessions (  
+  id CHAR(36) PRIMARY KEY,  
+  user\_id CHAR(36) NOT NULL,  
+  active\_company\_id CHAR(36) NULL,
+
+  refresh\_token VARCHAR(255) NOT NULL UNIQUE,  
+  ip\_address VARCHAR(100),  
+  user\_agent VARCHAR(500),
+
+  expires\_at DATETIME(6) NOT NULL,  
+  revoked\_at DATETIME(6) NULL,  
+  created\_at DATETIME(6) NOT NULL,  
+  updated\_at DATETIME(6) NOT NULL  
+)
+
+---
+
+# **5️⃣ COMPANIES (empresas / tenants)**
+
+Combinando todas las versiones:
+
+companies (  
+  id CHAR(36) PRIMARY KEY,  
+  legal\_name VARCHAR(255) NOT NULL,  
+  trade\_name VARCHAR(255),  
+  tax\_id VARCHAR(50),
+
+  status ENUM('active','inactive','archived','deleted') NOT NULL DEFAULT 'active',  
+  deleted\_at DATETIME(6),
+
+  created\_at DATETIME(6) NOT NULL,  
+  updated\_at DATETIME(6) NOT NULL  
+)
+
+Reglas duras:
+
+* no se puede eliminar si tiene owners  
+* no se puede eliminar si tiene datos activos  
+* no puede quedar sin owner
+
+---
+
+# **6️⃣ COMPANY\_INVITATIONS (invitaciones, versión final)**
+
+company\_invitations (  
+  id CHAR(36) PRIMARY KEY,  
+  company\_id CHAR(36) NOT NULL,  
+  email VARCHAR(255) NOT NULL,  
+  role ENUM('owner','admin','member','viewer') NOT NULL,  
+  token CHAR(36) NOT NULL,
+
+  status ENUM('pending','accepted','rejected','expired','revoked') NOT NULL,  
+  expires\_at DATETIME(6),  
+  accepted\_at DATETIME(6),
+
+  created\_at DATETIME(6) NOT NULL,  
+  updated\_at DATETIME(6) NOT NULL  
+)
+
+---
+
+# **7️⃣ COMPANY\_MEMBERSHIPS (participación)**
+
+company\_memberships (  
+  id CHAR(36) PRIMARY KEY,  
+  company\_id CHAR(36) NOT NULL,  
+  user\_id CHAR(36) NOT NULL,  
+  status ENUM('active','invited','revoked','left','deleted') NOT NULL,  
+  deleted\_at DATETIME(6),
+
+  created\_at DATETIME(6),  
+  updated\_at DATETIME(6)  
+)
+
+---
+
+# **8️⃣ MEMBERSHIP\_ROLES (roles dentro de empresa)**
+
+membership\_roles (  
+  id CHAR(36) PRIMARY KEY,  
+  membership\_id CHAR(36) NOT NULL,  
+  role ENUM('owner','admin','member','viewer') NOT NULL,  
+  status ENUM('active','deleted') NOT NULL DEFAULT 'active',  
+  deleted\_at DATETIME(6),
+
+  created\_at DATETIME(6),  
+  updated\_at DATETIME(6)  
+)
+
+---
+
+# **9️⃣ COMPANY\_SETTINGS (config por empresa)**
+
+company\_settings (  
+  id CHAR(36) PRIMARY KEY,  
+  company\_id CHAR(36) NOT NULL,  
+  setting\_key VARCHAR(100) NOT NULL,  
+  setting\_value TEXT,  
+  status ENUM('active','deleted') NOT NULL DEFAULT 'active',  
+  deleted\_at DATETIME(6),
+
+  created\_at DATETIME(6),  
+  updated\_at DATETIME(6)  
+)
+
+---
+
+# **🔟 FILES \+ FILE\_LINKS (repositorio universal)**
+
+## **FUSIÓN:**
+
+La estructura actual ya es correcta y no se fusiona con otras tablas.
+
+### **files**
+
+files (  
+  id CHAR(36) PRIMARY KEY,  
+  company\_id CHAR(36) NOT NULL,  
+  user\_id CHAR(36) NOT NULL,  
+  mime\_type VARCHAR(200),  
+  size INT,  
+  path VARCHAR(500),
+
+  status ENUM('active','archived','deleted') NOT NULL DEFAULT 'active',  
+  deleted\_at DATETIME(6),
+
+  created\_at DATETIME(6)  
+)
+
+### **file\_links**
+
+file\_links (  
+  id CHAR(36) PRIMARY KEY,  
+  file\_id CHAR(36) NOT NULL,  
+  entity\_type VARCHAR(100) NOT NULL,  
+  entity\_id CHAR(36) NOT NULL,  
+  status ENUM('active','deleted') NOT NULL DEFAULT 'active',  
+  deleted\_at DATETIME(6),
+
+  created\_at DATETIME(6)  
+)
+
+---
+
+# **1️⃣1️⃣ AUDIT\_LOG (auditoría universal)**
+
+Versión mejorada final:
+
+audit\_log (  
+  id CHAR(36) PRIMARY KEY,  
+  company\_id CHAR(36) NULL,  
+  user\_id CHAR(36) NULL,  
+  entity\_type VARCHAR(100) NOT NULL,  
+  entity\_id CHAR(36) NOT NULL,
+
+  action ENUM('create','update','delete','archive','restore','security') NOT NULL,  
+  snapshot\_before JSON,  
+  snapshot\_after JSON,  
+  metadata JSON,
+
+  created\_at DATETIME(6) NOT NULL  
+)
+
+---
+
+# **1️⃣2️⃣ USER\_LEGAL\_ACCEPTANCES**
+
+(Normalizado y completo)
+
+user\_legal\_acceptances (  
+  id CHAR(36) PRIMARY KEY,  
+  user\_id CHAR(36) NOT NULL,  
+  document\_type ENUM('tos','privacy','cookies') NOT NULL,  
+  document\_version VARCHAR(50) NOT NULL,  
+  accepted\_at DATETIME(6) NOT NULL,
+
+  created\_at DATETIME(6)  
+)
+
+---
+
+Perfecto. Acá tenés el **DOCUMENTO DE SCOPE OFICIAL**.  
+Esto es **contrato de alcance**, corto, explícito y sin interpretaciones.  
+---
+
+## **Documento de Scope Oficial (Congelado)**
+
+---
+
+## **🎯 Propósito del documento**
+
+Este documento define **qué incluye y qué NO incluye** la **FASE 1 – CORE PLATFORM**.
+
+Su función es:
+
+* evitar inflación de alcance  
+* eliminar ambigüedades  
+* servir como **límite contractual**  
+* permitir avanzar rápido a fases posteriores sin rehacer nada
+
+Si algo **no está explícitamente incluido**, **no pertenece a la Fase 1**.
+
+---
+
+## **🟢 ALCANCE INCLUIDO — FASE 1**
+
+La Fase 1 cubre **exclusivamente el núcleo estructural del sistema**.
+
+### **1️⃣ Identidad y acceso**
+
+* Usuarios (users)  
+* Estados de usuario  
+* Bloqueos automáticos y manuales  
+* Verificación de email  
+* Recuperación de contraseña  
+* Aceptación de términos legales  
+* Sesiones con refresh tokens  
+* Eventos de seguridad (login, locks, resets)
+
+### **2️⃣ Seguridad**
+
+* Registro de intentos de login  
+* Detección de abuso  
+* Bloqueos temporales  
+* Auditoría de eventos de seguridad  
+* No revelación de existencia de usuarios
+
+### **3️⃣ Instalación inicial (bootstrap)**
+
+* Sistema inicia sin usuarios  
+* Primer usuario → `superadmin`  
+* Bloqueo permanente del modo instalación  
+* Sistema idempotente
+
+### **4️⃣ Multiempresa (tenancy)**
+
+* Empresas (companies)  
+* Relación usuario–empresa (memberships)  
+* Roles por empresa (owner, admin, member, viewer)  
+* Protección de ownership (no dejar empresa sin owner)  
+* Invitaciones a empresas por email  
+* Cambio de contexto de empresa por sesión
+
+### **5️⃣ Configuración básica**
+
+* Configuración por empresa (company\_settings)  
+* Preferencias mínimas de usuario (cuando aplique)
+
+### **6️⃣ Archivos**
+
+* Repositorio universal de archivos  
+* Asociación flexible de archivos a entidades  
+* Prohibición de borrado físico automático
+
+### **7️⃣ Auditoría**
+
+* Auditoría universal de cambios  
+* Auditoría de seguridad separada  
+* Registros append-only  
+* No modificables  
+* No eliminables
+
+### **8️⃣ Reglas transversales**
+
+* No borrado físico  
+* Borrado lógico con `status` y `deleted_at`  
+* Regla padre–hijo tipo 4equim  
+* UUID globales  
+* Preparado para integraciones futuras (sin implementarlas)
+
+---
+
+## **🔴 ALCANCE EXCLUIDO — FASE 1**
+
+**Todo lo siguiente queda EXPLÍCITAMENTE fuera de la Fase 1**  
+y será tratado en fases posteriores.
+
+### **❌ Negocio / ERP**
+
+* Clientes  
+* Proveedores  
+* Productos / servicios  
+* Ventas  
+* Compras  
+* Stock  
+* Órdenes de trabajo  
+* Precios  
+* Facturación
+
+### **❌ Contabilidad (ACCCORE)**
+
+* Asientos contables  
+* Plan de cuentas  
+* Impuestos  
+* Balances  
+* Cierres contables  
+* Reportes financieros
+
+### **❌ Permisos finos**
+
+* Permisos por módulo  
+* Permisos por acción  
+* ACL detallado  
+* Feature flags por rol
+
+### **❌ Automatización y jobs**
+
+* Tareas programadas  
+* Workers  
+* Colas  
+* Procesos automáticos
+
+### **❌ Integraciones**
+
+* API pública  
+* Webhooks  
+* Integraciones externas  
+* Sincronización con terceros
+
+### **❌ UI / UX**
+
+* Diseño visual  
+* Frontend  
+* Mobile UI  
+* Experiencia de usuario
+
+### **❌ Reporting**
+
+* Dashboards  
+* Métricas de negocio  
+* KPIs
+
+---
+
+## **🧱 Regla de oro del Scope**
+
+**FASE 1 \= infraestructura, identidad, seguridad y tenant.**  
+**FASE 1 ≠ negocio.**
+
+Cualquier funcionalidad que:
+
+* genere dinero  
+* represente operaciones  
+* impacte contabilidad  
+* dependa de reglas comerciales
+
+👉 **NO pertenece a Fase 1\.**
+
+---
+
+## **🔒 Estado del Scope**
+
+* **Estado:** CONGELADO  
+* **Modificable:** ❌ No  
+* **Cambio de alcance:** solo mediante apertura formal de nueva fase
+
+---
+
+## **✅ Conclusión**
+
+Este documento:
+
+* cierra definitivamente el alcance de la Fase 1  
+* protege al sistema de sobreingeniería  
+* habilita avanzar rápido a Fase 2 sin deuda  
+* sirve como contrato técnico y de producto
+
+---
+
+## **EVENTOS AUDITABLES**
+
+### **Objetivo**
+
+Dejar **explícito** qué acciones **SIEMPRE** generan auditoría.  
+Nada queda implícito. Nada “a criterio”.
+
+---
+
+## **🧾 EVENTOS QUE DEBEN AUDITARSE (OBLIGATORIOS)**
+
+### **Usuarios**
+
+* create user  
+* update user  
+* change status (pending/active/locked/disabled/deleted)  
+* manual lock / unlock  
+* email verified  
+* password reset (used)
+
+### **Seguridad**
+
+* login\_success  
+* login\_failed  
+* auto\_lock  
+* auto\_unlock  
+* session revoked  
+* install completed
+
+### **Empresas**
+
+* create company  
+* update company  
+* change company status  
+* archive company  
+* delete (lógico) company
+
+### **Membresías**
+
+* invite user  
+* accept invitation  
+* reject / revoke invitation  
+* add membership  
+* remove membership (logical)  
+* change membership role  
+* last owner protection triggered (evento explícito)
+
+### **Configuración**
+
+* create setting  
+* update setting  
+* delete (logical) setting
+
+### **Archivos**
+
+* upload file  
+* link file  
+* unlink file  
+* archive file  
+* delete (logical) file
+
+### **Legal**
+
+* accept TOS / privacy  
+* change legal version required
+
+---
+
+## **📌 REGLAS DURAS**
+
+* Todo evento auditado:  
+  * **quién** (user\_id o system)  
+  * **cuándo**  
+  * **qué entidad**  
+  * **antes / después**  
+* Auditoría:  
+  * append-only  
+  * no editable  
+  * no eliminable  
+* Eventos de seguridad **también** se reflejan en `audit_log` (tipo `security`).
+
+---
+
+## **FLUJO DE INSTALACIÓN INICIAL**
+
+### **Objetivo**
+
+Garantizar **arranque desde cero** sin riesgo de takeover.
+
+---
+
+1. **Estado inicial del sistema**  
+   * Sistema arranca como **NO INSTALADO**.  
+   * No existe ningún usuario válido.  
+2. **Endpoint de instalación**  
+   * Solo disponible mientras `APP_INSTALLED = false`.  
+   * Permite crear **UN SOLO usuario inicial**.  
+3. **Primer usuario**  
+   * Se convierte automáticamente en:  
+     * `superadmin`  
+     * `owner` de la empresa inicial (si se crea)  
+   * Email **debe verificarse**.  
+4. **Empresa inicial**  
+   * Opcional.  
+   * Si se crea, queda asociada al usuario inicial como `owner`.  
+5. **Cierre del modo instalación**  
+   * Al finalizar:  
+     * `APP_INSTALLED = true`  
+     * Endpoint de instalación queda **bloqueado permanentemente**.  
+   * Evento auditado: `install_completed`.  
+6. **Post-instalación**  
+   * Cualquier nuevo usuario:  
+     * solo por invitación  
+     * o por flujo controlado normal
+
+---
+
+## **FLUJO DE LOGIN (AUTENTICACIÓN)**
+
+### **Objetivo**
+
+Permitir acceso seguro al sistema **sin revelar información sensible**, con control de abuso y trazabilidad total.
+
+---
+
+### **📌 Precondiciones**
+
+* Sistema instalado (`APP_INSTALLED = true`)  
+* Usuario existente o no (el flujo **no debe revelar** cuál de los dos casos aplica)
+
+---
+
+### **🔁 Flujo secuencial**
+
+1. **Recepción de credenciales**  
+   * Se recibe `email + password`  
+   * Respuesta genérica ante error (siempre igual)  
+2. **Registro del intento**  
+   * Se registra **siempre** un evento de seguridad:  
+     * `login_failed` o `login_success`  
+   * Se guarda:  
+     * email  
+     * ip  
+     * user\_agent  
+     * timestamp  
+3. **Validaciones de estado**  
+   * Si `status = deleted | disabled` → rechazo silencioso  
+   * Si `status = locked`:  
+     * si `locked_until` venció → desbloqueo automático \+ evento  
+     * si no → rechazo  
+4. **Chequeo de credenciales**  
+   * Comparación segura del hash  
+   * Sin early-exit (timing attack safe)  
+5. **Política de bloqueo automático**  
+   * N intentos fallidos en ventana T → `locked`  
+   * Se setea `locked_until`  
+   * Evento: `auto_lock`  
+6. **Login exitoso**  
+   * Se crea sesión:  
+     * refresh token único  
+     * expiración  
+   * Se asigna empresa activa:  
+     * última usada  
+     * o primera disponible  
+   * Evento: `login_success`  
+7. **Respuesta**  
+   * Tokens \+ metadata mínima  
+   * Nunca:  
+     * estados internos  
+     * razones de bloqueo  
+     * confirmación de existencia de usuario
+
+---
+
+### **🔒 Reglas duras**
+
+* El sistema **no dice**:  
+  * “usuario no existe”  
+  * “password incorrecto”  
+  * “usuario bloqueado”  
+* Todas las respuestas de error son equivalentes.  
+* Todos los eventos quedan auditados.  
+* Login **nunca** modifica datos de negocio.
+
+---
+
+### **✔ Resultado**
+
+* Login seguro  
+* Sin filtraciones  
+* Preparado para rate-limit y MFA futuro  
+* Auditable y escalable
+
+---
+
+## **✅ PASO 9 — LOGOUT & REVOCACIÓN DE SESIONES**
+
+### **Objetivo**
+
+Garantizar que **una sesión pueda invalidarse inmediatamente** sin afectar otras ni dejar residuos de seguridad.
+
+---
+
+### **🔁 Flujo de logout (usuario)**
+
+1. **Solicitud de logout**  
+   * Se recibe identificador de sesión / refresh token.  
+   * No se revela estado previo.  
+2. **Revocación**  
+   * La sesión se marca como **revocada**.  
+   * Se invalida el refresh token.  
+3. **Auditoría**  
+   * Evento de seguridad registrado:  
+     * `session_revoked`  
+   * Actor \= usuario.  
+4. **Respuesta**  
+   * Siempre exitosa (idempotente).
+
+---
+
+### **🔒 Revocación forzada (sistema)**
+
+Se revocan **todas las sesiones activas** del usuario cuando:
+
+* usuario pasa a `locked`  
+* usuario pasa a `disabled`  
+* usuario pasa a `deleted`  
+* cambio de contraseña  
+* reset de contraseña usado
+
+Eventos auditados correspondientes.
+
+---
+
+### **🧱 Reglas duras**
+
+* Logout **no elimina** la sesión, la invalida.  
+* Tokens revocados **no pueden reutilizarse**.  
+* Revocar una sesión **no impacta** otras (salvo revocación forzada).  
+* Repetir logout **no genera error**.
+
+---
+
+### **✔ Resultado**
+
+* Cierre de sesión inmediato  
+* Control total del acceso  
+* Sin efectos colaterales  
+* Auditoría completa
+
+---
+
+---
+
+## **✅ PASO 10 — RECUPERACIÓN DE CONTRASEÑA**
+
+### **Objetivo**
+
+Permitir restablecer contraseña **sin filtrar información**, con control total y trazabilidad.
+
+---
+
+### **🔁 Flujo end-to-end**
+
+1. **Solicitud de reset**  
+   * Se recibe email.  
+   * Respuesta **siempre genérica** (exista o no el usuario).  
+   * Evento de seguridad registrado:  
+     * `password_reset_requested`.  
+2. **Generación de token**  
+   * Token:  
+     * único  
+     * de un solo uso  
+     * con vencimiento corto.  
+   * Asociado al usuario si existe.  
+   * Nunca se expone el user\_id.  
+3. **Envío**  
+   * Se envía link con token.  
+   * Reenviable, invalida tokens anteriores activos.  
+4. **Uso del token**  
+   * Se valida:  
+     * no expirado  
+     * no usado  
+   * Se establece nueva contraseña.  
+   * Se invalidan **todas las sesiones activas**.  
+   * Evento: `password_reset_used`.  
+5. **Cierre**  
+   * Token marcado como usado.  
+   * Usuario queda en estado `active` (si no estaba `disabled/deleted`).
+
+---
+
+### **🔒 Reglas duras**
+
+* Nunca se informa si el email existe.  
+* Tokens:  
+  * no reutilizables  
+  * no extensibles  
+* Reset **no desbloquea** usuarios `disabled` o `deleted`.  
+* Todo el flujo queda auditado.
+
+---
+
+### **✔ Resultado**
+
+* Recuperación segura  
+* Sin filtraciones  
+* Sin sesiones zombie  
+* Lista para producción real
+
+---
+
+---
+
+## **✅ PASO 11 — VERIFICACIÓN DE EMAIL**
+
+### **Objetivo**
+
+Confirmar la **identidad del email** antes de habilitar acceso operativo.
+
+---
+
+### **🔁 Flujo end-to-end**
+
+1. **Generación del token**  
+   * Token:  
+     * único  
+     * de un solo uso  
+     * con vencimiento.  
+   * Asociado al usuario en estado `pending`.  
+2. **Envío**  
+   * Se envía email con link de verificación.  
+   * Reenvío permitido.  
+   * Cada reenvío invalida tokens previos activos.  
+   * Evento: `email_verification_sent`.  
+3. **Uso del token**  
+   * Validación:  
+     * existe  
+     * no expirado  
+     * no usado  
+   * Se marca:  
+     * `email_verified_at`  
+     * `status = active`  
+   * Evento: `email_verified`.  
+4. **Respuesta**  
+   * Éxito genérico.  
+   * Nunca revela estado interno previo.
+
+---
+
+### **🔒 Reglas duras**
+
+* Un usuario **no puede operar** sin email verificado.  
+* Verificar email **no crea sesión automáticamente**.  
+* Tokens:  
+  * no reutilizables  
+  * no prorrogables.  
+* Usuarios `disabled` o `deleted` **no pueden verificarse**.  
+* Todo evento queda auditado.
+
+---
+
+### **✔ Resultado**
+
+* Identidad validada  
+* Menos spam / cuentas basura  
+* Base legal y de seguridad sólida
+
+---
+
+---
+
+## **✅ PASO 12 — ACEPTACIÓN LEGAL OBLIGATORIA**
+
+### **Objetivo**
+
+Garantizar **cumplimiento legal** antes de cualquier uso operativo del sistema.
+
+---
+
+### **🔁 Flujo end-to-end**
+
+1. **Definición de documentos activos**  
+   * Tipos: `tos`, `privacy`, `cookies`  
+   * Cada uno con **versión vigente**.  
+2. **Chequeo previo**  
+   * En login / primera operación:  
+     * si falta aceptación de **algún documento vigente** → acceso **bloqueado** a funciones operativas.  
+3. **Presentación**  
+   * Se muestra documento \+ versión.  
+   * Aceptación **explícita** (no implícita).  
+4. **Registro**  
+   * Se guarda:  
+     * user\_id  
+     * document\_type  
+     * document\_version  
+     * timestamp  
+   * Evento auditado: `legal_accepted`.  
+5. **Cambio de versión**  
+   * Nueva versión invalida aceptaciones previas.  
+   * Usuario debe **reaceptar**.
+
+---
+
+### **🔒 Reglas duras**
+
+* Sin aceptación → **no hay operación**.  
+* Aceptación:  
+  * es **inmutable**  
+  * no se edita  
+  * no se elimina.  
+* Usuarios `disabled` o `deleted` **no aceptan**.  
+* Aceptar legal **no crea sesión** ni modifica seguridad.
+
+---
+
+### **✔ Resultado**
+
+* Cobertura legal sólida  
+* Prueba histórica de aceptación  
+* Preparado para monetización y compliance
+
+---
+
+---
+
+## **✅ PASO 13 — FLUJOS MULTIEMPRESA (USO REAL)**
+
+### **Objetivo**
+
+Permitir que un usuario **opere correctamente en múltiples empresas** sin cruces, sin ambigüedad y con control total.
+
+---
+
+### **🏢 1\) Creación de empresa**
+
+**Quién puede crear**
+
+* Usuario `active`  
+* Con rol global válido  
+* O miembro con permiso de creación (definido a nivel producto)
+
+**Reglas**
+
+* La empresa nace:  
+  * `status = active`  
+  * con **al menos un owner**  
+* El creador queda como `owner` automáticamente.  
+* Evento auditado: `company_created`.
+
+---
+
+### **✉️ 2\) Invitación a empresa**
+
+**Flujo**
+
+1. Owner/Admin invita por email.  
+2. Se crea invitación con:  
+   * rol asignado  
+   * expiración  
+3. Evento: `company_invite_sent`.
+
+**Reglas**
+
+* Invitación:  
+  * es única  
+  * no reutilizable  
+  * expira  
+* Invitar a email ya miembro → rechazo explícito.
+
+---
+
+### **✅ 3\) Aceptación / rechazo**
+
+**Aceptar**
+
+* Si usuario existe → se crea membership.  
+* Si no existe → se crea usuario `pending`.  
+* Se asigna rol.  
+* Evento: `company_invite_accepted`.
+
+**Rechazar**
+
+* No crea membership.  
+* Evento: `company_invite_rejected`.
+
+---
+
+### **🔁 4\) Cambio de contexto de empresa**
+
+**Reglas**
+
+* Un usuario solo puede operar dentro de:  
+  * una empresa activa  
+  * de la que sea miembro activo  
+* El contexto:  
+  * se guarda por sesión  
+  * no es implícito  
+* Evento: `company_context_changed`.
+
+---
+
+### **🔒 5\) Protección de ownership**
+
+* Una empresa **nunca** puede quedar sin `owner`.  
+* Intentar remover al último owner:  
+  * operación bloqueada  
+  * evento auditado: `last_owner_protection`.
+
+---
+
+### **🧱 6\) Salida de empresa**
+
+**Reglas**
+
+* Un usuario puede salir de una empresa.  
+* No puede salir si es el último owner.  
+* Evento: `membership_left`.
+
+---
+
+### **✔ Resultado**
+
+* Multiempresa real  
+* Sin fugas de datos  
+* Flujos claros para usuarios reales  
+* Preparado para escalar a ERP
+
+---
+
+---
+
+## **✅ PASO 14 — LIFECYCLE DE EMPRESAS**
+
+### **Objetivo**
+
+Definir **cómo una empresa cambia de estado** sin pérdida de datos ni inconsistencias.
+
+---
+
+### **🧭 Estados permitidos**
+
+* `active` → operativa  
+* `inactive` → pausada (sin nuevas operaciones)  
+* `archived` → histórica, solo lectura  
+* `deleted` → eliminación lógica (no visible, no operable)
+
+---
+
+### **🔁 Transiciones válidas**
+
+1. **active → inactive**  
+   * Permitido siempre.  
+   * No elimina datos.  
+   * Evento: `company_deactivated`.  
+2. **inactive → active**  
+   * Permitido si no hay bloqueos legales.  
+   * Evento: `company_reactivated`.  
+3. **active / inactive → archived**  
+   * Requiere:  
+     * cero operaciones activas  
+     * usuarios notificados  
+   * Empresa queda **solo lectura**.  
+   * Evento: `company_archived`.  
+4. **archived → active**  
+   * Permitido por owner/superadmin.  
+   * Evento: `company_restored`.  
+5. **archived → deleted**  
+   * Requiere:  
+     * sin datos activos dependientes  
+     * confirmación explícita  
+   * Marca `deleted_at`.  
+   * Evento: `company_deleted_logical`.
+
+---
+
+### **🔒 Reglas duras**
+
+* **Nunca** borrado físico.  
+* **Nunca** dejar empresa sin `owner`.  
+* No se puede:  
+  * archivar si hay operaciones activas  
+  * eliminar si hay dependencias activas  
+* Toda transición es **auditada**.
+
+---
+
+### **✔ Resultado**
+
+* Ciclo de vida claro y seguro  
+* Historial intacto  
+* Preparado para compliance y soporte
+
+---
+
+---
+
+## **✅ PASO 15 — LIFECYCLE DE USUARIOS**
+
+### **Objetivo**
+
+Definir **cómo evoluciona un usuario** desde su creación hasta su eliminación lógica, **sin perder trazabilidad ni seguridad**.
+
+---
+
+### **🧭 Estados permitidos**
+
+* `pending` → creado, email no verificado  
+* `active` → puede operar  
+* `locked` → bloqueo automático temporal  
+* `disabled` → bloqueo manual administrativo  
+* `deleted` → eliminación lógica (no visible, no accesible)
+
+---
+
+### **🔁 Transiciones válidas**
+
+1. **pending → active**  
+   * Requiere:  
+     * verificación de email  
+     * aceptación legal vigente  
+   * Evento: `user_activated`.  
+2. **active → locked**  
+   * Automático por seguridad (intentos fallidos).  
+   * Se define `locked_until`.  
+   * Evento: `user_auto_locked`.  
+3. **locked → active**  
+   * Automático al vencer `locked_until`.  
+   * Evento: `user_auto_unlocked`.  
+4. **active → disabled**  
+   * Manual (admin/superadmin).  
+   * No reversible sin intervención explícita.  
+   * Evento: `user_disabled`.  
+5. **disabled → active**  
+   * Manual (admin/superadmin).  
+   * Evento: `user_reenabled`.  
+6. **active / disabled → deleted**  
+   * Eliminación lógica.  
+   * Usuario:  
+     * pierde acceso  
+     * conserva historial  
+   * Evento: `user_deleted_logical`.
+
+---
+
+### **🔒 Reglas duras**
+
+* **Nunca** borrado físico.  
+* Usuario `deleted`:  
+  * no inicia sesión  
+  * no acepta invitaciones  
+  * no acepta legales  
+* Bloqueos automáticos:  
+  * **no** cambian membresías  
+* Bloqueos manuales:  
+  * revocan **todas** las sesiones.  
+* Cambios de estado **siempre auditados**.
+
+---
+
+### **🧱 Relación con empresas**
+
+* Eliminar lógicamente un usuario:  
+  * **no elimina** empresas  
+  * **no elimina** auditoría  
+  * memberships pasan a `revoked`  
+* No se puede eliminar:  
+  * si es **último owner** de alguna empresa  
+  * sin transferir ownership antes
+
+---
+
+### **✔ Resultado**
+
+* Ciclo de vida claro  
+* Seguridad total  
+* Sin pérdida histórica  
+* Compatible con crecimiento y compliance
+
+---
+
+---
+
+## **✅ PASO 16 — LIFECYCLE DE MEMBRESÍAS Y ROLES**
+
+### **Objetivo**
+
+Definir **cómo un usuario entra, cambia y sale de una empresa**, y cómo evolucionan sus roles **sin romper ownership ni seguridad**.
+
+---
+
+## **🧭 Estados de company\_memberships**
+
+* `invited` → invitación emitida, no aceptada  
+* `active` → miembro operativo  
+* `revoked` → acceso retirado por la empresa  
+* `left` → salida voluntaria del usuario  
+* `deleted` → eliminación lógica (histórica)
+
+---
+
+## **🔁 Transiciones válidas (membership)**
+
+1. **invited → active**  
+   * Invitación aceptada.  
+   * Evento: `membership_activated`.  
+2. **invited → revoked**  
+   * Invitación cancelada.  
+   * Evento: `membership_invite_revoked`.  
+3. **active → revoked**  
+   * Acción de owner/admin.  
+   * Evento: `membership_revoked`.  
+4. **active → left**  
+   * Acción del usuario.  
+   * Evento: `membership_left`.  
+5. **revoked / left → active**  
+   * Solo por nueva invitación.  
+   * Evento: `membership_reactivated`.  
+6. **any → deleted**  
+   * Eliminación lógica histórica.  
+   * Evento: `membership_deleted_logical`.
+
+---
+
+## **🧭 Estados de membership\_roles**
+
+* `active`  
+* `deleted`
+
+---
+
+## **🔁 Transiciones válidas (roles)**
+
+1. **Asignación inicial**  
+   * Se crea un rol activo.  
+   * Evento: `role_assigned`.  
+2. **Cambio de rol**  
+   * Nuevo rol activo.  
+   * Rol previo pasa a `deleted`.  
+   * Evento: `role_changed`.  
+3. **Eliminación lógica**  
+   * Solo si existe otro rol activo.  
+   * Evento: `role_deleted_logical`.
+
+---
+
+## **🔒 Reglas duras**
+
+* Un membership tiene **un solo rol activo**.  
+* Una empresa **no puede quedar sin owner**.  
+* No se puede:  
+  * revocar  
+  * cambiar rol  
+  * eliminar  
+    a un membership si rompe la regla de ownership.  
+* Todos los cambios:  
+  * son explícitos  
+  * son auditados.
+
+---
+
+## **🧱 Relación con usuarios y empresas**
+
+* Desactivar un usuario:  
+  * **no borra** memberships  
+  * impide operar  
+* Archivar empresa:  
+  * memberships quedan solo lectura  
+* Eliminar empresa lógicamente:  
+  * memberships pasan a `deleted`
+
+---
+
+### **✔ Resultado**
+
+* Control total de acceso por empresa  
+* Ownership protegido  
+* Historial intacto  
+* Base sólida para permisos futuros
+
+---
+
+---
+
+## **✅ PASO 17 — CIERRE FORMAL DE FASE 1**
+
+### **Objetivo**
+
+Declarar la **FASE 1 oficialmente terminada**, **congelada** y **lista para ser implementada** sin reinterpretaciones.
+
+---
+
+## **🧾 Checklist final (obligatorio)**
+
+### **🔒 Arquitectura**
+
+* Identidad global definida (users).  
+* Multiempresa real sin cruces.  
+* Roles gruesos, no permisos finos.  
+* Sin borrado físico en entidades core.  
+* Regla padre–hijo aplicada a todo.
+
+### **🧭 Ciclos de vida**
+
+* Usuarios: definidos y auditados.  
+* Empresas: definidos y auditados.  
+* Membresías y roles: definidos y protegidos.  
+* Sesiones y seguridad: definidos end-to-end.
+
+### **🔐 Seguridad**
+
+* Login seguro sin filtrado de información.  
+* Bloqueos automáticos y manuales.  
+* Tokens seguros y revocables.  
+* Auditoría de eventos críticos y de seguridad.
+
+### **🧾 Auditoría y legal**
+
+* Audit log universal, append-only.  
+* Eventos de seguridad separados y auditados.  
+* Aceptación legal versionada e inmutable.
+
+### **🧱 Scope**
+
+* Alcance incluido/excluido documentado.  
+* Fase 1 **no contiene negocio**.  
+* Fase 1 **no contiene contabilidad**.  
+* Fase 1 **no contiene permisos finos**.
+
+---
+
+## **🔒 Estado oficial**
+
+* **Fase:** CORE PLATFORM – FASE 1  
+* **Estado:** CERRADA / CONGELADA  
+* **Modificable:** ❌ No  
+* **Cambios:** solo mediante apertura formal de Fase 2+  
+* **Uso:** contrato técnico y de producto
+
+---
+
+## **📌 Declaración final**
+
+“Este documento define el núcleo inmutable del sistema.  
+Cualquier implementación debe ajustarse a estas reglas sin excepción.”
+
+Con esto:
+
+* no hay deuda conceptual  
+* no hay ambigüedades  
+* no hay decisiones postergadas  
+* el sistema es escalable y seguro por diseño
+
+---
+
+
+
+===== ARCHIVO: 📘 FASE 2 - SISA ERP.md =====
+# **📘 FASE 2 — SISA ERP**
+
+## **PASO 2 — DOCUMENTACIÓN OPERATIVA COMPLETA Y DEFINITIVA**
+
+**Contrato de arquitectura • Sin código • Sin SQL • Sin implementación**
+
+---
+
+# **🧭 0\. PROPÓSITO DE LA FASE 2**
+
+FASE 2 define el **ERP Operativo**:
+
+* registra hechos operativos reales  
+* organiza relaciones entre empresas  
+* maneja tiempos, estados y responsabilidades  
+* produce datos **consistentes, inmutables y auditables**  
+* prepara la información para que **ACCCORE (Fase 3\)** genere contabilidad
+
+FASE 2 **no interpreta**, solo **registra**.
+
+---
+
+# **🧱 1\. PRINCIPIOS RECTORES (INAMOVIBLES)**
+
+### **1.1 No existe borrado físico**
+
+Todo registro permanece.  
+Solo existe:
+
+* `status`  
+* `deleted_at`  
+* estados terminales (`cancelled`, `voided`, `completed`, etc.)
+
+### **1.2 Regla 4equim (Padre–Hijo)**
+
+No se puede cerrar o invalidar un padre si hay hijos activos contradictorios:
+
+Ejemplos:
+
+* una factura `issued` no puede `voided` si tiene receipts `completed`  
+* una venta no puede `cancelled` si tiene invoice activa  
+* un job no puede eliminarse si tiene ejecución
+
+### **1.3 Audit Trail Obligatorio**
+
+Toda acción significativa genera:
+
+* actor  
+* timestamp  
+* entidad \+ id  
+* estado anterior → nuevo  
+* motivo (si aplica)  
+* dependencias vinculadas
+
+Intentos bloqueados **también se auditan**.
+
+### **1.4 Idempotencia real**
+
+La misma operación repetida:
+
+* no duplica efectos  
+* responde “ok, ya estaba hecho”  
+* se puede registrar como no-op relevante
+
+### **1.5 Estados terminales**
+
+No retroceden:
+
+* `completed`  
+* `cancelled`  
+* `voided`  
+* `reversed`  
+* `deleted`
+
+### **1.6 Inmutabilidad de datos operativos**
+
+Una vez emitidos/confirmados:
+
+❌ No se modifican importes  
+❌ No se cambian ítems  
+❌ No se cambian fechas reales  
+✔ Se permiten **ajustes** mediante eventos explícitos
+
+---
+
+# **🧱 2\. CLIENTES Y PROVEEDORES — DEFINICIÓN FINAL**
+
+**No existen tablas clients ni providers.**
+
+Regla absoluta:
+
+Cliente y proveedor son solamente **roles** de una **empresa existente en la tabla `companies`**.
+
+Referencias válidas:
+
+* `client_company_id` → `companies.id`  
+* `provider_company_id` → `companies.id`
+
+Una empresa puede ser:
+
+* cliente  
+* proveedor  
+* ambas  
+* ninguna
+
+No se duplican datos.  
+No se reescribe CUIT.  
+No se generan inconsistencias legales.
+
+---
+
+# **🧱 3\. ENTIDADES OPERATIVAS DE FASE 2**
+
+FASE 2 define:
+
+* **Sales** (ventas operativas)  
+* **Purchases** (compras operativas)  
+* **Quotes** (presupuestos)  
+* **Jobs** (órdenes de trabajo)  
+* **Invoices** (documento operativo)  
+* **Receipts** (cobros)  
+* **Payments** (pagos)  
+* **Adjustments** (ajustes operativos)
+
+Todas:
+
+* pertenecen a una empresa  
+* tienen lifecycle  
+* generan auditoría  
+* respetan regla 4equim  
+* NO generan asientos contables  
+* NO interpretan fiscalidad
+
+---
+
+# **🧱 4\. LIFECYCLE POR ENTIDAD**
+
+(Máquinas de estado completas, definitivas)
+
+---
+
+# **4.1 JOBS / WORK ORDERS — Modelo Final**
+
+## **Estados válidos**
+
+* `planned`  
+* `in_progress`  
+* `paused`  
+* `completed` (terminal)  
+* `cancelled` (terminal)
+
+## **❌ Transiciones prohibidas**
+
+* `completed → *`  
+* `cancelled → *`  
+* `in_progress → planned`  
+* `paused → planned` (NO permitido)
+
+## **✔ Transiciones válidas**
+
+* `planned → in_progress`  
+* `planned → cancelled`  
+* `in_progress → paused`  
+* `paused → in_progress`  
+* `in_progress → completed`  
+* `paused → completed` (requiere evidencia real)
+
+## **Precondiciones obligatorias**
+
+### **Para `planned → in_progress`**
+
+* **start\_datetime obligatorio**  
+* responsable asignado  
+* tipo de job definido  
+* empresa activa
+
+### **Para `in_progress → completed`**
+
+Debe existir evidencia:
+
+* timestamps reales de inicio/fin  
+* tareas ejecutadas  
+* tiempos registrados  
+* evento explícito de cierre
+
+### **Cancelación**
+
+* desde `planned`: libre con motivo  
+* desde `in_progress`: permitido con evidencia \+ motivo  
+  (no se borra lo ya ejecutado)
+
+---
+
+# **4.2 MODIFICACIÓN DE FECHAS — SOLUCIÓN FINAL Y UNIVERSAL**
+
+### **Principio duro**
+
+El pasado NO se edita.  
+Se corrige agregando historia.
+
+### **Tipos de fechas**
+
+* **planificadas** → editables  
+* **reales** → inmutables  
+* **correcciones** → eventos
+
+## **Cómo se modifica:**
+
+### **Estado `planned`**
+
+✔ puede cambiar fechas sin restricciones  
+✔ auditado
+
+### **Estados `in_progress` / `paused`**
+
+❌ NO se edita lo que ya ocurrió  
+✔ se ajusta lo futuro  
+✔ se registra **schedule\_adjusted**
+
+### **Estado `completed`**
+
+❌ No se puede tocar  
+✔ solo ajustes mediante eventos: `job_time_correction_applied`
+
+---
+
+# **4.3 SALES**
+
+## **Estados**
+
+* `draft`  
+* `confirmed`  
+* `cancelled` (terminal)
+
+## **Transiciones válidas**
+
+* `draft → confirmed`  
+* `draft → cancelled`  
+* `confirmed → cancelled` (si no tiene invoice o receipts activos)
+
+## **Precondiciones para `draft → confirmed`**
+
+* company activa  
+* client\_company\_id válido  
+* items \> 0  
+* moneda definida  
+* fecha operativa
+
+---
+
+# **4.4 PURCHASES**
+
+Simétrico a Sales:
+
+* `draft → confirmed`  
+* `draft → cancelled`  
+* `confirmed → cancelled` (sin pagos ni documentos activos)
+
+---
+
+# **4.5 QUOTES (PRESUPUESTOS)**
+
+## **Estados**
+
+* `draft`  
+* `sent`  
+* `accepted`  
+* `rejected`  
+* `expired` (terminal)
+
+## **Transiciones**
+
+* `draft → sent`  
+* `sent → accepted`  
+* `sent → rejected`  
+* `sent → expired`
+
+Accepted → terminal lógico (no vuelve atrás)
+
+---
+
+# **4.6 INVOICES (Documento operativo)**
+
+## **Estados**
+
+* `draft`  
+* `issued`  
+* `voided`
+
+## **Transiciones válidas**
+
+* `draft → issued`  
+* `draft → voided`  
+* `issued → voided` (sin receipts completed)
+
+---
+
+# **4.7 RECEIPTS (Cobros)**
+
+## **Estados**
+
+* `pending`  
+* `completed`  
+* `reversed`
+
+## **Transiciones válidas**
+
+* `pending → completed`  
+* `pending → reversed`  
+* `completed → reversed`
+
+---
+
+# **4.8 PAYMENTS (Pagos)**
+
+Simétrico a receipts.
+
+---
+
+# **4.9 ADJUSTMENTS (Ajustes operativos)**
+
+Se usan para:
+
+* corregir tiempos reales  
+* corregir datos históricos relevantes  
+* sin reescribir el registro original
+
+Estados:
+
+* `draft`  
+* `applied` (terminal)  
+* `cancelled`
+
+---
+
+# **🧱 5\. VALIDACIONES CRUZADAS DEL ERP**
+
+### **5.1 Dependencias inconsistentes (bloquea)**
+
+Ejemplos:
+
+* invoice con receipt → no se puede voided  
+* sale con invoice → no se puede cancelar  
+* purchase con payment → no se puede cancelar
+
+### **5.2 Temporalidad**
+
+No se puede reescribir:
+
+* fechas reales  
+* eventos pasados  
+* operaciones ya emitidas/confirmadas
+
+### **5.3 Empresas inactivas**
+
+Si `company.status != active`:
+
+* no se pueden crear operaciones nuevas  
+* solo lectura y archivado
+
+---
+
+# **🧱 6\. AUDITORÍA OBLIGATORIA**
+
+Cada transición o cambio relevante genera:
+
+* actor  
+* timestamp  
+* estado anterior / nuevo  
+* payload de cambios  
+* motivo (si corresponde)  
+* ids referenciados  
+* no-op si corresponde
+
+Cambios temporales SIEMPRE auditan valor anterior y nuevo.
+
+---
+
+# **🧱 7\. EVENTOS OPERATIVOS**
+
+(Base para ACCCORE)
+
+FASE 2 genera eventos como:
+
+* `job_started`  
+* `job_paused`  
+* `job_completed`  
+* `job_cancelled`  
+* `schedule_adjusted`  
+* `sale_confirmed`  
+* `invoice_issued`  
+* `receipt_completed`  
+* `payment_completed`  
+* `correction_applied`  
+* etc.
+
+Estos eventos:
+
+* son inmutables  
+* no se modifican  
+* son el insumo de ACCCORE  
+* no contienen lógica contable
+
+---
+
+# **🧱 8\. RELACIÓN FASE 2 → FASE 3**
+
+FASE 2:
+
+* registra hechos brutos  
+* mantiene historia limpia  
+* garantiza trazabilidad completa
+
+FASE 3:
+
+* lee eventos  
+* genera asientos  
+* aplica fiscalidad y reglas contables
+
+FASE 2 NO incluye:
+
+* cuentas contables  
+* IVA  
+* percepciones  
+* amortización  
+* resultados  
+* cashflow contable
+
+---
+
+
+
+===== ARCHIVO: 📘 PERMISOS FINOS - ACL _ RBAC EXTENDIDO (MÓDULO TRANSVERSAL).md =====
+# **📘 PERMISOS FINOS — ACL / RBAC EXTENDIDO (MÓDULO TRANSVERSAL)**
+
+**Contrato de Arquitectura — Sin implementación — Sin código**
+
+---
+
+## **🎯 PROPÓSITO DEL MÓDULO**
+
+Este módulo define **qué puede hacer cada usuario** dentro del sistema, de forma:
+
+* granular
+
+* auditable
+
+* reproducible
+
+* independiente del negocio
+
+* independiente de la contabilidad
+
+Los permisos finos **NO forman parte del Core**, **NO pertenecen al ERP**, y **NO son contabilidad**.
+
+Son una **capa transversal**, apoyada sobre el Core.
+
+---
+
+## **🧱 POSICIÓN EN LA ARQUITECTURA**
+
+`1) Core Platform`  
+`2) Permisos Finos (ACL / RBAC)`  
+`3) ERP Operativo`  
+`4) Contabilidad (ACCCORE)`
+
+### **Dependencias**
+
+* Depende de: Core Platform
+
+* NO depende de: ERP, Contabilidad
+
+* Es requerido por: ERP y Contabilidad
+
+---
+
+## **🧱 PRINCIPIOS INMUTABLES**
+
+### **1️⃣ Separación total de responsabilidades**
+
+* Core → identidad y pertenencia
+
+* Permisos Finos → autorización
+
+* ERP → lógica operativa
+
+* Contabilidad → interpretación financiera
+
+Nunca se mezclan.
+
+---
+
+### **2️⃣ Permisos explícitos**
+
+Si una acción no tiene permiso explícito:
+
+* está prohibida
+
+* no se infiere
+
+* no se hereda implícitamente
+
+---
+
+### **3️⃣ Evaluación determinística**
+
+Dado:
+
+* usuario
+
+* empresa
+
+* acción
+
+👉 el resultado de autorización es **siempre el mismo**.
+
+---
+
+### **4️⃣ Auditoría obligatoria**
+
+Toda decisión relevante de autorización:
+
+* puede auditarse
+
+* puede reproducirse
+
+* puede explicarse
+
+---
+
+## **🧱 COMPONENTES DEL MÓDULO**
+
+---
+
+### **🔹 1\) PERMISSIONS (Permisos atómicos)**
+
+Un permiso representa **una acción concreta** del sistema.
+
+Ejemplos:
+
+* `jobs.view`
+
+* `jobs.create`
+
+* `jobs.update`
+
+* `jobs.complete`
+
+* `jobs.cancel`
+
+* `invoices.issue`
+
+* `invoices.void`
+
+* `receipts.complete`
+
+* `payments.execute`
+
+* `accounting.view_reports`
+
+* `accounting.post_entries`
+
+* `settings.manage`
+
+* `users.invite`
+
+#### **Reglas**
+
+* Son atómicos
+
+* No dependen del rol
+
+* No dependen de la UI
+
+* No contienen lógica
+
+---
+
+### **🔹 2\) PERMISSION GROUPS (opcional)**
+
+Agrupan permisos por dominio funcional:
+
+* Jobs
+
+* Sales
+
+* Purchases
+
+* Invoices
+
+* Accounting
+
+* Configuration
+
+* Security
+
+Solo sirven para organización y UI.
+
+---
+
+### **🔹 3\) ROLES FINOS (RBAC EXTENDIDO)**
+
+Un rol fino es **un conjunto de permisos**, no una jerarquía.
+
+Ejemplos:
+
+* `erp_operator`
+
+* `erp_manager`
+
+* `finance_viewer`
+
+* `finance_operator`
+
+* `accounting_admin`
+
+* `company_admin_extended`
+
+#### **Reglas**
+
+* Un rol **no hereda** de otro
+
+* Los permisos se asignan explícitamente
+
+* Un rol puede cambiar sin afectar al Core
+
+---
+
+### **🔹 4\) ASIGNACIÓN DE ROLES FINOS POR EMPRESA**
+
+Los roles finos se asignan **por empresa**, no globalmente.
+
+Un mismo usuario puede ser:
+
+* `erp_manager` en Empresa A
+
+* `finance_viewer` en Empresa B
+
+Siempre respetando:
+
+* membership activa
+
+* empresa activa
+
+---
+
+### **🔹 5\) OVERRIDES POR USUARIO**
+
+Además del rol fino, se permiten:
+
+* permisos adicionales
+
+* revocaciones puntuales
+
+Ejemplos:
+
+* permitir `jobs.cancel` a un usuario puntual
+
+* negar `accounting.post_entries` aunque el rol lo tenga
+
+Los overrides:
+
+* son explícitos
+
+* son auditables
+
+* nunca implícitos
+
+---
+
+## **🧱 FLUJO DE EVALUACIÓN DE PERMISOS**
+
+`1) Usuario autenticado`  
+`2) Empresa activa`  
+`3) Membership activa`  
+`4) Rol grueso válido (Core)`  
+`5) Rol fino asignado`  
+`6) Overrides aplicados`  
+`7) Evaluación del permiso solicitado`
+
+Resultado:
+
+* ALLOW
+
+* DENY
+
+Sin estados intermedios.
+
+---
+
+## **🧾 AUDITORÍA DE AUTORIZACIÓN**
+
+Se debe poder registrar:
+
+* usuario
+
+* empresa
+
+* permiso evaluado
+
+* resultado
+
+* motivo
+
+* timestamp
+
+Especialmente para:
+
+* acciones sensibles
+
+* denegaciones críticas
+
+* cambios de configuración
+
+---
+
+## **🧱 RELACIÓN CON ROLES GRUESOS (CORE)**
+
+Roles del Core:
+
+* owner
+
+* admin
+
+* member
+
+* viewer
+
+### **Regla dura**
+
+Los roles gruesos:
+
+* **no otorgan permisos finos automáticamente**
+
+* solo habilitan **posibilidad de asignación**
+
+Ejemplo:
+
+* `viewer` → nunca puede recibir permisos de escritura
+
+* `owner` → puede recibir cualquier permiso fino
+
+---
+
+## **🧱 RELACIÓN CON ERP Y CONTABILIDAD**
+
+ERP y Contabilidad:
+
+* **consultan** permisos
+
+* **no los definen**
+
+* **no los modifican**
+
+Esto permite:
+
+* agregar módulos sin duplicar lógica
+
+* auditar accesos
+
+* cambiar permisos sin tocar negocio
+
+---
+
+## **🧱 SCOPE DEL MÓDULO**
+
+### **Incluye**
+
+* permisos atómicos
+
+* roles finos
+
+* asignación por empresa
+
+* overrides
+
+* auditoría
+
+### **NO incluye**
+
+* autenticación
+
+* sesiones
+
+* lógica de negocio
+
+* contabilidad
+
+* UI
+
+---
+
+## **🔒 ESTADO DEL DOCUMENTO**
+
+* Módulo: Permisos Finos
+
+* Tipo: Transversal
+
+* Estado: DEFINIDO
+
+* Modificable: solo agregando permisos nuevos
+
+* Eliminación de permisos existentes: ❌ prohibida
+
+---
+
+## **✅ CONCLUSIÓN**
+
+Este módulo:
+
+* evita mezclar identidad con negocio
+
+* permite escalar sin deuda
+
+* habilita multiempresa real
+
+* protege auditoría y trazabilidad
+
+* es compatible con cualquier ERP o módulo futuro
+
+
+
+===== ARCHIVO: 📘 PERMISOS GRUESOS - POLÍTICAS DE AUTORIZACIÓN POR ROL GRUESO (CORE ROLES).md =====
+# **📘 POLÍTICAS DE AUTORIZACIÓN POR ROL GRUESO (CORE ROLES)**
+
+**Contrato de Arquitectura — Sin código — Sin implementación**
+
+---
+
+## **🎯 PROPÓSITO**
+
+Este documento define **qué está permitido y qué está prohibido** para cada **rol grueso** del Core:
+
+* `owner`  
+* `admin`  
+* `member`  
+* `viewer`
+
+Los roles gruesos **NO otorgan permisos finos directamente**.  
+Definen **límites máximos**, **restricciones duras** y **capacidades de asignación**.
+
+---
+
+## **🧱 PRINCIPIOS INMUTABLES**
+
+1. Los roles gruesos **no ejecutan acciones**  
+2. Los roles gruesos **limitan el universo de permisos finos posibles**  
+3. Ningún rol fino puede violar la política del rol grueso  
+4. El Core **no conoce permisos finos**, solo políticas  
+5. Toda violación → **DENY** \+ evento auditable
+
+---
+
+## **🧭 CAPAS DE DECISIÓN**
+
+Rol Grueso (Core)  
+        ↓ limita  
+Roles Finos (ACL)  
+        ↓ combinan  
+Permisos Atómicos
+
+Si una acción no está permitida por el **rol grueso**,  
+**no importa** qué rol fino tenga el usuario → **DENY**.
+
+---
+
+## **👑 ROL: OWNER**
+
+### **🎯 Propósito**
+
+Control total de la empresa.  
+Responsable legal y operativo.
+
+---
+
+### **✅ Puede**
+
+* Asignar **cualquier rol fino**  
+* Ejecutar **cualquier permiso fino**  
+* Administrar usuarios y memberships  
+* Modificar configuración de empresa  
+* Acceder a ERP completo  
+* Acceder a contabilidad completa  
+* Cerrar y reabrir períodos contables  
+* Ver y exportar auditoría  
+* Delegar permisos  
+* Transferir ownership
+
+---
+
+### **❌ No puede**
+
+* Eliminar físicamente datos  
+* Eliminar auditoría  
+* Romper regla 4equim  
+* Dejar la empresa sin owner
+
+---
+
+### **🔒 Restricciones duras**
+
+* Siempre debe existir **al menos un owner**  
+* Todas las acciones críticas son auditadas
+
+---
+
+## **🛠 ROL: ADMIN**
+
+### **🎯 Propósito**
+
+Gestión operativa y administrativa de la empresa.
+
+---
+
+### **✅ Puede**
+
+* Asignar **roles finos no críticos**  
+* Operar ERP completo  
+* Gestionar jobs, ventas, compras  
+* Emitir invoices  
+* Gestionar cobros y pagos  
+* Ver reportes operativos  
+* Ver auditoría (solo lectura)
+
+---
+
+### **❌ No puede**
+
+* Asignar permisos contables críticos  
+* Cerrar o reabrir períodos contables  
+* Modificar reglas contables  
+* Eliminar owners  
+* Transferir ownership  
+* Cambiar políticas de autorización
+
+---
+
+### **🔒 Restricciones duras**
+
+* No puede auto-elevarse a owner  
+* No puede modificar políticas de rol grueso
+
+---
+
+## **👷 ROL: MEMBER**
+
+### **🎯 Propósito**
+
+Ejecución operativa.
+
+---
+
+### **✅ Puede**
+
+* Ejecutar acciones **solo si tiene rol fino compatible**  
+* Operar jobs  
+* Registrar tiempos  
+* Crear operaciones borrador  
+* Subir y asociar archivos  
+* Ver información operativa propia
+
+---
+
+### **❌ No puede**
+
+* Asignar roles (finos o gruesos)  
+* Cancelar operaciones críticas  
+* Emitir invoices  
+* Confirmar ventas/compras  
+* Acceder a contabilidad  
+* Ver auditoría  
+* Cambiar configuración de empresa
+
+---
+
+### **🔒 Restricciones duras**
+
+* Nunca puede recibir permisos contables  
+* Nunca puede administrar usuarios
+
+---
+
+## **👀 ROL: VIEWER**
+
+### **🎯 Propósito**
+
+Lectura y observación.
+
+---
+
+### **✅ Puede**
+
+* Ver información permitida  
+* Ver jobs, ventas, invoices (read-only)  
+* Ver reportes operativos básicos
+
+---
+
+### **❌ No puede**
+
+* Crear, modificar o cancelar nada  
+* Registrar tiempos  
+* Subir archivos  
+* Ver contabilidad  
+* Ver auditoría  
+* Gestionar usuarios  
+* Ejecutar acciones
+
+---
+
+### **🔒 Restricciones duras**
+
+* Todos los permisos deben ser `.view`  
+* Cualquier permiso de escritura → DENY
+
+---
+
+## **🧱 MATRIZ RESUMEN**
+
+┌────────┬──────────┬──────────┬──────────┐  
+│ Acción │ Owner    │ Admin    │ Member   │ Viewer   │  
+├────────┼──────────┼──────────┼──────────┤  
+│ ERP    │ FULL     │ FULL     │ LIMITADO │ READ     │  
+│ ACL    │ FULL     │ PARCIAL  │ NO       │ NO       │  
+│ Contab │ FULL     │ NO       │ NO       │ NO       │  
+│ Audit  │ FULL     │ READ     │ NO       │ NO       │  
+│ Config │ FULL     │ LIMITED  │ NO       │ NO       │  
+└────────┴──────────┴──────────┴──────────┘
+
+---
+
+## **🧾 AUDITORÍA DE POLÍTICAS**
+
+Debe auditarse:
+
+* asignación de rol grueso  
+* asignación de rol fino  
+* cambios de roles  
+* intentos bloqueados por política  
+* intentos de elevación indebida
+
+---
+
+## **🔒 REGLAS FINALES**
+
+* Los roles gruesos **nunca cambian dinámicamente**  
+* Los permisos finos **nunca rompen políticas**  
+* Toda evaluación es determinística  
+* Toda denegación crítica es auditable  
+* No hay excepciones implícitas
+
+---
+
+## **✅ CONCLUSIÓN**
+
+Con estas políticas:
+
+* El Core mantiene el control  
+* ACL es flexible pero segura  
+* ERP no conoce seguridad  
+* Contabilidad queda protegida  
+* El sistema es escalable  
+* No hay escalamiento indebido  
+* No hay deuda conceptual
+
+
+
