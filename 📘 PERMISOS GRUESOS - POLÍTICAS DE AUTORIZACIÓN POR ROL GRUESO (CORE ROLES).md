@@ -206,6 +206,30 @@ Lectura y observación.
 
 ---
 
+## **🧩 TABLA ACTUALIZADA — ROLES GRUESOS Y LÍMITES**
+
+> Consolidación de límites duros y capacidades máximas. Los roles gruesos **no** otorgan permisos finos.
+
+| Rol grueso | Límite duro (hard‑deny) | Capacidades máximas permitidas | Asignación de roles finos |
+|---|---|---|---|
+| **owner** | No puede eliminar datos físicos, eliminar auditoría, romper 4equim, dejar empresa sin owner | Acceso total a ERP, contabilidad completa, cierres contables, auditoría, configuración, usuarios | Puede asignar **cualquier rol fino** |
+| **admin** | No puede permisos contables críticos, cerrar/reabrir períodos, modificar reglas contables, eliminar owners, transferir ownership | ERP completo, gestión operativa, invoices, cobros/pagos, reportes operativos, auditoría solo lectura | Puede asignar **roles finos no críticos** |
+| **member** | Sin contabilidad, sin gestión de usuarios, sin roles, sin acciones críticas | Operación limitada, jobs, tiempos, borradores, archivos, info operativa propia | **No** asigna roles finos |
+| **viewer** | Solo lectura; cualquier permiso de escritura → DENY | Lectura operativa básica (jobs/ventas/invoices read-only) | **No** asigna roles finos |
+
+---
+
+## **✅ CHECKLIST PRE‑IMPLEMENTACIÓN (ROLES GRUESOS)**
+
+- [ ] Los roles gruesos **no** otorgan permisos finos.
+- [ ] Hard‑deny aplicado **antes** de evaluar roles finos.
+- [ ] `viewer` es **solo lectura** (cualquier escritura → DENY).
+- [ ] `member` sin contabilidad y sin gestión de usuarios.
+- [ ] `admin` sin permisos contables críticos.
+- [ ] `owner` con bypass explícito de ACL.
+- [ ] Auditoría obligatoria en acciones críticas y denegaciones relevantes.
+- [ ] Separación de capas Core ≠ ACL ≠ ERP ≠ Contabilidad.
+
 ## **🧾 AUDITORÍA DE POLÍTICAS**
 
 Debe auditarse:
@@ -239,4 +263,3 @@ Con estas políticas:
 * El sistema es escalable  
 * No hay escalamiento indebido  
 * No hay deuda conceptual
-

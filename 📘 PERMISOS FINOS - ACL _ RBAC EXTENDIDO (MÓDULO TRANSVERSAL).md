@@ -199,6 +199,44 @@ Los roles finos se asignan **por empresa**, no globalmente.
 
 Un mismo usuario puede ser:
 
+---
+
+## **🧩 TABLA ACTUALIZADA — ROLES/PERMISOS (ACL/RBAC)**
+
+> Consolidación de políticas de autorización aplicables a permisos finos.
+
+| Regla | Descripción |
+|---|---|
+| Roles gruesos **no otorgan** permisos finos | El rol grueso solo limita el universo posible. |
+| Hard‑deny por rol grueso | Si el rol grueso prohíbe, **DENY** aunque haya rol fino. |
+| Permiso explícito requerido | Si no existe permiso atómico explícito → **DENY**. |
+| Sin herencia implícita | Ningún rol fino hereda de otro. |
+| Overrides explícitos | Si están definidos, prevalecen. |
+| Auditoría obligatoria | Toda denegación crítica y acción de seguridad/contabilidad debe auditarse. |
+
+---
+
+## **✅ CHECKLIST PRE‑IMPLEMENTACIÓN (ACL/RBAC)**
+
+- [ ] Separación de capas: ACL es transversal, no pertenece a Core/ERP/Contabilidad.
+- [ ] Permisos **atómicos** y **explícitos** (si no existe → DENY).
+- [ ] Sin herencia implícita entre roles finos.
+- [ ] Hard‑deny por rol grueso aplicado antes de permisos finos.
+- [ ] Overrides explícitos definidos y auditables.
+- [ ] Auditoría obligatoria en denegaciones críticas y acciones sensibles.
+
+---
+
+## **🧭 REGLAS EXACTAS PARA BACKEND (POLICIES/ACL)**
+
+1. Validar `X-Company-Id` y membership activa.
+2. Evaluar **rol grueso** → aplicar hard‑deny si corresponde.
+3. Evaluar **roles finos** asignados por empresa.
+4. Verificar **permiso atómico explícito**.
+5. Resolver **overrides explícitos** (si existen).
+6. Registrar auditoría en denegaciones críticas y acciones sensibles.
+7. Resultado final: **ALLOW** o **DENY** determinístico.
+
 * `erp_manager` en Empresa A
 
 * `finance_viewer` en Empresa B
@@ -384,4 +422,3 @@ Este módulo:
 * protege auditoría y trazabilidad
 
 * es compatible con cualquier ERP o módulo futuro
-
