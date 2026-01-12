@@ -161,11 +161,16 @@ Estados:
 - Todos los eventos offline:
   - Son **append-only**
   - Nunca pisan datos existentes
-  - Se validan contra el estado actual
+  - Se validan contra el **estado actual**
 - Conflictos:
   - Se rechazan eventos inválidos
   - Se registran para auditoría
 - El servidor es la **fuente de verdad final**
+
+**Regla explícita**
+- No existe “rebobinado” del estado para acomodar offline.
+- Un evento puede ser válido al generarse y **rechazado al sincronizar**.
+- Esto es **esperado**, no un error del sistema.
 
 ---
 

@@ -56,6 +56,7 @@ Cada evento contiene:
   - saltos de secuencia
   - reenvíos
 - El orden de procesamiento es **estricto por dispositivo**
+- No existe orden global entre dispositivos
 
 ---
 
@@ -124,6 +125,7 @@ Regla:
 - El evento **no se reintenta automáticamente**
 - Se registra el rechazo
 - Se notifica al usuario
+- Un rechazo **no bloquea** los eventos posteriores
 
 ---
 
@@ -137,6 +139,37 @@ Cada evento queda registrado con:
 - Motivo de rechazo (si aplica)
 
 Nunca se borra.
+
+---
+
+## 🆔 Identidad del dispositivo
+
+- `device_id` se registra y **no se recicla**
+- Revocar un dispositivo:
+  - invalida eventos futuros
+  - **no invalida eventos pasados**
+
+---
+
+## ♻️ Reinstalación de la app
+
+- La cola offline es **volátil por diseño**
+- No se garantiza persistencia cross-install
+- Si el usuario desinstala, **asume la pérdida** de eventos locales
+
+Esto debe informarse explícitamente en UX.
+
+---
+
+## ⏱️ Timestamps
+
+- Siempre se guardan:
+  - `local_timestamp`
+  - `server_timestamp`
+- Las reglas se evalúan contra:
+  - server time (primario)
+  - local time (referencial)
+- Nunca se “corrige” el tiempo local
 
 ---
 
@@ -154,6 +187,18 @@ Nunca se borra.
 - Eventos firmados con hash
 - Asociados a dispositivo y usuario
 - No se aceptan eventos sin autenticación previa válida
+
+---
+
+## 🧭 UX obligatoria
+
+La UI debe mostrar:
+- eventos pendientes
+- eventos rechazados
+- motivo claro
+- acción sugerida
+
+No mostrar esto = bug funcional.
 
 ---
 
