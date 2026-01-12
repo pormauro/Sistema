@@ -131,3 +131,30 @@ Interpreta hechos → genera asientos
 1️⃣ Core Platform
 2️⃣ ERP Operativo (Negocio)
 3️⃣ Contabilidad (ACCCORE)
+
+---
+
+## **✅ CHECKLIST PRE‑IMPLEMENTACIÓN (GENERAL)**
+
+- [ ] Separación de capas: Core ≠ ACL ≠ ERP ≠ Contabilidad.
+- [ ] Roles gruesos limitan; no otorgan permisos finos.
+- [ ] Permisos finos explícitos; sin herencia implícita.
+- [ ] Hard‑deny por rol grueso aplicado antes de roles finos.
+- [ ] Auditoría obligatoria en cambios de estado, datos y denegaciones críticas.
+- [ ] Inmutabilidad: sin borrado físico; correcciones por eventos.
+- [ ] Regla 4equim vigente.
+- [ ] Toda escritura en transacción.
+- [ ] Contabilidad solo vía AccountingService.
+- [ ] `X-Company-Id` y membership activa siempre verificados.
+- [ ] Idempotencia cuando corresponda (offline/sync).
+- [ ] No lógica de permisos en UI.
+
+---
+
+## **📌 FASE Y ALCANCE (DECLARACIÓN OBLIGATORIA)**
+
+- Fase actual debe declararse explícitamente antes de implementar.
+- Core: identidad, seguridad, multiempresa, auditoría, archivos, 4equim. **Sin permisos finos ni negocio.**
+- ACL/RBAC: permisos atómicos, roles finos, overrides, auditoría de autorización. **Sin ERP ni contabilidad.**
+- ERP: eventos operativos inmutables y lifecycles. **Sin contabilidad ni permisos.**
+- Contabilidad: asientos solo desde eventos ERP vía AccountingService. **Nunca desde UI/endpoints directos.**
