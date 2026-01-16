@@ -169,7 +169,7 @@ Todas:
 
 ### **Para `planned → in_progress`**
 
-* **start\_datetime obligatorio**  
+* transición **automática** al crear el primer `job_time_entry`  
 * responsable asignado  
 * tipo de job definido  
 * empresa activa
@@ -188,6 +188,31 @@ Debe existir evidencia:
 * desde `planned`: libre con motivo  
 * desde `in_progress`: permitido con evidencia \+ motivo  
   (no se borra lo ya ejecutado)
+
+## **Regla dura: actividad real vs estado**
+
+* la creación del **primer `job_time_entry`** fuerza el estado a `in_progress`  
+* no existe trabajo real sin job activo  
+
+---
+
+## **Checklist — ejecución real (modelo aprobado)**
+
+El checklist **no existe en abstracto**.  
+Existe cuando alguien lo ejecuta en un tramo real de trabajo.
+
+```text
+job_checklist_execution
+- checklist_item_id
+- job_time_entry_id
+- executed_by_user_id
+- executed_at
+```
+
+Reglas:
+
+* un mismo item puede ejecutarse múltiples veces  
+* cada ejecución queda vinculada a un `job_time_entry` real  
 
 ---
 
@@ -221,6 +246,32 @@ Se corrige agregando historia.
 
 ❌ No se puede tocar  
 ✔ solo ajustes mediante eventos: `job_time_correction_applied`
+
+## **Corrección contable de tiempos (modelo definitivo)**
+
+**Regla dura:**
+
+* `job_time_entries` **NO se editan ni se eliminan**  
+* toda corrección se registra como **evento de ajuste**
+
+**Modelo lógico:**
+
+* `job_time_entries` → evento original  
+* `job_time_adjustments` → correcciones posteriores
+
+**Campos mínimos del ajuste:**
+
+* `adjustment_of_time_entry_id`  
+* `delta_minutes`  
+* `reason`  
+* `adjusted_by_user_id`  
+* `adjusted_at`
+
+**Cálculo total:**
+
+```
+SUM(job_time_entries.minutes) + SUM(job_time_adjustments.delta_minutes)
+```
 
 ---
 
@@ -427,4 +478,3 @@ FASE 2 NO incluye:
 * cashflow contable
 
 ---
-
