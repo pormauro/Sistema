@@ -1,393 +1,480 @@
--- =====================================================================
---  SISA - ERP OPERATIVO (FASE 2)
---  SCHEMA COMPLETO • VERSION FINAL Y CONGELADA
--- =====================================================================
+# **📘 FASE 2 — SISA ERP**
 
-SET NAMES utf8mb4;
-SET time_zone = "+00:00";
+## **PASO 2 — DOCUMENTACIÓN OPERATIVA COMPLETA Y DEFINITIVA**
 
+**Contrato de arquitectura • Sin código • Sin SQL • Sin implementación**
 
--- =====================================================================
--- 1) JOBS (ORDENES DE TRABAJO)
--- =====================================================================
+---
 
-CREATE TABLE jobs (
-    id CHAR(36) PRIMARY KEY,
-    company_id CHAR(36) NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    description TEXT NULL,
+# **🧭 0\. PROPÓSITO DE LA FASE 2**
 
-    status ENUM('planned','in_progress','paused','completed','cancelled')
-        NOT NULL DEFAULT 'planned',
+FASE 2 define el **ERP Operativo**:
 
-    type VARCHAR(100) NULL,
-    assigned_user_id CHAR(36) NULL,
+* registra hechos operativos reales  
+* organiza relaciones entre empresas  
+* maneja tiempos, estados y responsabilidades  
+* produce datos **consistentes, inmutables y auditables**  
+* prepara la información para que **ACCCORE (Fase 3\)** genere contabilidad
 
-    planned_start DATETIME(6) NULL,
-    planned_end DATETIME(6) NULL,
+FASE 2 **no interpreta**, solo **registra**.
 
-    completed_at DATETIME(6) NULL,
-    cancelled_at DATETIME(6) NULL,
-    cancelled_reason TEXT NULL,
+---
 
-    deleted_at DATETIME(6) NULL,
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+# **🧱 1\. PRINCIPIOS RECTORES (INAMOVIBLES)**
 
-    INDEX (company_id),
-    INDEX (assigned_user_id),
-    INDEX (status)
-);
+### **1.1 No existe borrado físico**
 
--- =====================================================================
--- 1.1) JOB_TIME_ENTRIES (tabla única, editable, auditada)
--- =====================================================================
+Todo registro permanece.  
+Solo existe:
 
-CREATE TABLE job_time_entries (
-    id CHAR(36) PRIMARY KEY,
-    job_id CHAR(36) NOT NULL,
-    user_id CHAR(36) NOT NULL,
+* `status`  
+* `deleted_at`  
+* estados terminales (`cancelled`, `voided`, `completed`, etc.)
 
-    started_at DATETIME(6) NOT NULL,
-    ended_at DATETIME(6) NOT NULL,
-    minutes INT NOT NULL,
+### **1.2 Regla 4equim (Padre–Hijo)**
 
-    status ENUM('active','deleted') NOT NULL DEFAULT 'active',
-    deleted_at DATETIME(6) NULL,
+No se puede cerrar o invalidar un padre si hay hijos activos contradictorios:
 
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+Ejemplos:
 
-    INDEX (job_id),
-    INDEX (user_id),
-    INDEX (status)
-);
+* una factura `issued` no puede `voided` si tiene receipts `completed`  
+* una venta no puede `cancelled` si tiene invoice activa  
+* un job no puede eliminarse si tiene ejecución
 
+### **1.3 Audit Trail Obligatorio**
 
--- =====================================================================
--- 1.3) JOB_CHECKLIST_ITEMS (definición de items)
--- =====================================================================
+Toda acción significativa genera:
 
-CREATE TABLE job_checklist_items (
-    id CHAR(36) PRIMARY KEY,
-    job_id CHAR(36) NOT NULL,
+* actor  
+* timestamp  
+* entidad \+ id  
+* estado anterior → nuevo  
+* motivo (si aplica)  
+* dependencias vinculadas
 
-    label VARCHAR(255) NOT NULL,
-    position INT NOT NULL DEFAULT 0,
+Intentos bloqueados **también se auditan**.
 
-    deleted_at DATETIME(6) NULL,
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+### **1.4 Idempotencia real**
 
-    INDEX (job_id)
-);
+La misma operación repetida:
 
--- =====================================================================
--- 1.4) JOB_CHECKLIST_EXECUTION (ejecuciones reales)
--- =====================================================================
+* no duplica efectos  
+* responde “ok, ya estaba hecho”  
+* se puede registrar como no-op relevante
 
-CREATE TABLE job_checklist_execution (
-    id CHAR(36) PRIMARY KEY,
-    checklist_item_id CHAR(36) NOT NULL,
-    job_time_entry_id CHAR(36) NOT NULL,
-    executed_by_user_id CHAR(36) NOT NULL,
+### **1.5 Estados terminales**
 
-    executed_at DATETIME(6) NOT NULL,
+No retroceden:
 
-    INDEX (checklist_item_id),
-    INDEX (job_time_entry_id),
-    INDEX (executed_by_user_id)
-);
+* `completed`  
+* `cancelled`  
+* `voided`  
+* `reversed`  
+* `deleted`
 
--- =====================================================================
--- 2) QUOTES (PRESUPUESTOS)
--- =====================================================================
+### **1.6 Inmutabilidad de datos operativos**
 
-CREATE TABLE quotes (
-    id CHAR(36) PRIMARY KEY,
-    company_id CHAR(36) NOT NULL,
-    client_company_id CHAR(36) NOT NULL,
+Una vez emitidos/confirmados:
 
-    title VARCHAR(255),
-    notes TEXT,
+❌ No se modifican importes  
+❌ No se cambian ítems  
+❌ No se cambian fechas reales  
+✔ Se permiten **ajustes** mediante eventos explícitos
 
-    status ENUM('draft','sent','accepted','rejected','expired')
-        NOT NULL DEFAULT 'draft',
+---
 
-    issued_at DATETIME(6) NULL,
-    accepted_at DATETIME(6) NULL,
-    rejected_at DATETIME(6) NULL,
-    expired_at DATETIME(6) NULL,
+# **🧱 2\. CLIENTES Y PROVEEDORES — DEFINICIÓN FINAL**
 
-    deleted_at DATETIME(6) NULL,
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+**No existen tablas clients ni providers.**
 
-    INDEX (company_id),
-    INDEX (client_company_id),
-    INDEX (status)
-);
+Regla absoluta:
 
--- =====================================================================
--- 2.1) QUOTE_ITEMS
--- =====================================================================
+Cliente y proveedor son solamente **roles** de una **empresa existente en la tabla `companies`**.
 
-CREATE TABLE quote_items (
-    id CHAR(36) PRIMARY KEY,
-    quote_id CHAR(36) NOT NULL,
+Referencias válidas:
 
-    description VARCHAR(255) NOT NULL,
-    quantity DECIMAL(15,4) NOT NULL,
-    unit_price DECIMAL(15,4) NOT NULL,
+* `client_company_id` → `companies.id`  
+* `provider_company_id` → `companies.id`
 
-    line_total DECIMAL(15,4) NOT NULL,
+Una empresa puede ser:
 
-    position INT NOT NULL DEFAULT 0,
+* cliente  
+* proveedor  
+* ambas  
+* ninguna
 
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+No se duplican datos.  
+No se reescribe CUIT.  
+No se generan inconsistencias legales.
 
-    INDEX (quote_id)
-);
+---
 
--- =====================================================================
--- 3) SALES (VENTAS OPERATIVAS)
--- =====================================================================
+# **🧱 3\. ENTIDADES OPERATIVAS DE FASE 2**
 
-CREATE TABLE sales (
-    id CHAR(36) PRIMARY KEY,
-    company_id CHAR(36) NOT NULL,
-    client_company_id CHAR(36) NOT NULL,
+FASE 2 define:
 
-    status ENUM('draft','confirmed','cancelled')
-        NOT NULL DEFAULT 'draft',
+* **Sales** (ventas operativas)  
+* **Purchases** (compras operativas)  
+* **Quotes** (presupuestos)  
+* **Jobs** (órdenes de trabajo)  
+* **Invoices** (documento operativo)  
+* **Receipts** (cobros)  
+* **Payments** (pagos)  
+* **Adjustments** (ajustes operativos)
 
-    sale_date DATE NOT NULL,
-    currency VARCHAR(10) NOT NULL,
+Todas:
 
-    confirmed_at DATETIME(6) NULL,
-    cancelled_at DATETIME(6) NULL,
-    cancelled_reason TEXT NULL,
+* pertenecen a una empresa  
+* tienen lifecycle  
+* generan auditoría  
+* respetan regla 4equim  
+* NO generan asientos contables  
+* NO interpretan fiscalidad
 
-    deleted_at DATETIME(6) NULL,
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+---
 
-    INDEX (company_id),
-    INDEX (client_company_id),
-    INDEX (status)
-);
+# **🧱 4\. LIFECYCLE POR ENTIDAD**
 
--- =====================================================================
--- 3.1) SALE_ITEMS
--- =====================================================================
+(Máquinas de estado completas, definitivas)
 
-CREATE TABLE sale_items (
-    id CHAR(36) PRIMARY KEY,
-    sale_id CHAR(36) NOT NULL,
+---
 
-    description VARCHAR(255) NOT NULL,
-    quantity DECIMAL(15,4) NOT NULL,
-    unit_price DECIMAL(15,4) NOT NULL,
+# **4.1 JOBS / WORK ORDERS — Modelo Final**
 
-    line_total DECIMAL(15,4) NOT NULL,
+## **Estados válidos**
 
-    position INT NOT NULL DEFAULT 0,
+* `planned`  
+* `in_progress`  
+* `paused`  
+* `completed` (terminal)  
+* `cancelled` (terminal)
 
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+## **❌ Transiciones prohibidas**
 
-    INDEX (sale_id)
-);
+* `completed → *`  
+* `cancelled → *`  
+* `in_progress → planned`  
+* `paused → planned` (NO permitido)
 
--- =====================================================================
--- 4) PURCHASES (COMPRAS)
--- =====================================================================
+## **✔ Transiciones válidas**
 
-CREATE TABLE purchases (
-    id CHAR(36) PRIMARY KEY,
-    company_id CHAR(36) NOT NULL,
-    provider_company_id CHAR(36) NOT NULL,
+* `planned → in_progress`  
+* `planned → cancelled`  
+* `in_progress → paused`  
+* `paused → in_progress`  
+* `in_progress → completed`  
+* `paused → completed` (requiere evidencia real)
 
-    status ENUM('draft','confirmed','cancelled')
-        NOT NULL DEFAULT 'draft',
+## **Precondiciones obligatorias**
 
-    purchase_date DATE NOT NULL,
-    currency VARCHAR(10) NOT NULL,
+### **Para `planned → in_progress`**
 
-    confirmed_at DATETIME(6) NULL,
-    cancelled_at DATETIME(6) NULL,
-    cancelled_reason TEXT NULL,
+* transición **automática** al crear el primer `job_time_entry`  
+* responsable asignado  
+* tipo de job definido  
+* empresa activa
 
-    deleted_at DATETIME(6) NULL,
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+### **Para `in_progress → completed`**
 
-    INDEX (company_id),
-    INDEX (provider_company_id),
-    INDEX (status)
-);
+Debe existir evidencia:
 
--- =====================================================================
--- 4.1) PURCHASE_ITEMS
--- =====================================================================
+* timestamps reales de inicio/fin  
+* tareas ejecutadas  
+* tiempos registrados  
+* evento explícito de cierre
 
-CREATE TABLE purchase_items (
-    id CHAR(36) PRIMARY KEY,
-    purchase_id CHAR(36) NOT NULL,
+### **Cancelación**
 
-    description VARCHAR(255) NOT NULL,
-    quantity DECIMAL(15,4) NOT NULL,
-    unit_price DECIMAL(15,4) NOT NULL,
+* desde `planned`: libre con motivo  
+* desde `in_progress`: permitido con evidencia \+ motivo  
+  (no se borra lo ya ejecutado)
 
-    line_total DECIMAL(15,4) NOT NULL,
+## **Regla dura: actividad real vs estado**
 
-    position INT NOT NULL DEFAULT 0,
+* la creación del **primer `job_time_entry`** fuerza el estado a `in_progress`  
+* no existe trabajo real sin job activo  
 
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+---
 
-    INDEX (purchase_id)
-);
+## **Checklist — ejecución real (modelo aprobado)**
 
--- =====================================================================
--- 5) INVOICES (DOCUMENTO OPERATIVO)
--- =====================================================================
+El checklist **no existe en abstracto**.  
+Existe cuando alguien lo ejecuta en un tramo real de trabajo.
 
-CREATE TABLE invoices (
-    id CHAR(36) PRIMARY KEY,
-    company_id CHAR(36) NOT NULL,
-    client_company_id CHAR(36) NOT NULL,
-    sale_id CHAR(36) NULL,
+```text
+job_checklist_execution
+- checklist_item_id
+- job_time_entry_id
+- executed_by_user_id
+- executed_at
+```
 
-    status ENUM('draft','issued','voided')
-        NOT NULL DEFAULT 'draft',
+Reglas:
 
-    invoice_date DATE NOT NULL,
+* un mismo item puede ejecutarse múltiples veces  
+* cada ejecución queda vinculada a un `job_time_entry` real  
 
-    issued_at DATETIME(6) NULL,
-    voided_at DATETIME(6) NULL,
-    voided_reason TEXT NULL,
+---
 
-    total_amount DECIMAL(15,4) NOT NULL,
+# **4.2 MODIFICACIÓN DE FECHAS — SOLUCIÓN FINAL Y UNIVERSAL**
 
-    deleted_at DATETIME(6) NULL,
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+### **Principio duro**
 
-    INDEX (company_id),
-    INDEX (client_company_id),
-    INDEX (sale_id),
-    INDEX (status)
-);
+El pasado NO se edita.  
+Se corrige agregando historia.
 
--- =====================================================================
--- 5.1) INVOICE_ITEMS
--- =====================================================================
+### **Tipos de fechas**
 
-CREATE TABLE invoice_items (
-    id CHAR(36) PRIMARY KEY,
-    invoice_id CHAR(36) NOT NULL,
+* **planificadas** → editables  
+* **reales** → inmutables  
+* **correcciones** → eventos
 
-    description VARCHAR(255) NOT NULL,
-    quantity DECIMAL(15,4) NOT NULL,
-    unit_price DECIMAL(15,4) NOT NULL,
+## **Cómo se modifica:**
 
-    line_total DECIMAL(15,4) NOT NULL,
+### **Estado `planned`**
 
-    position INT NOT NULL DEFAULT 0,
+✔ puede cambiar fechas sin restricciones  
+✔ auditado
 
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+### **Estados `in_progress` / `paused`**
 
-    INDEX (invoice_id)
-);
+❌ NO se edita lo que ya ocurrió  
+✔ se ajusta lo futuro  
+✔ se registra **schedule\_adjusted**
 
--- =====================================================================
--- 6) RECEIPTS (COBROS)
--- =====================================================================
+### **Estado `completed`**
 
-CREATE TABLE receipts (
-    id CHAR(36) PRIMARY KEY,
-    company_id CHAR(36) NOT NULL,
-    client_company_id CHAR(36) NOT NULL,
-    invoice_id CHAR(36) NULL,
+❌ No se puede tocar  
+✔ solo ajustes mediante eventos: `job_time_correction_applied`
 
-    status ENUM('pending','completed','reversed')
-        NOT NULL DEFAULT 'pending',
+## **Corrección contable de tiempos (modelo definitivo)**
 
-    receipt_date DATE NOT NULL,
-    amount DECIMAL(15,4) NOT NULL,
+**Regla dura:**
 
-    completed_at DATETIME(6) NULL,
-    reversed_at DATETIME(6) NULL,
-    reversed_reason TEXT NULL,
+* `job_time_entries` **NO se editan ni se eliminan**  
+* toda corrección se registra como **evento de ajuste**
 
-    deleted_at DATETIME(6),
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+**Modelo lógico:**
 
-    INDEX (company_id),
-    INDEX (client_company_id),
-    INDEX (invoice_id),
-    INDEX (status)
-);
+* `job_time_entries` → evento original  
+* `job_time_adjustments` → correcciones posteriores
 
--- =====================================================================
--- 7) PAYMENTS (PAGOS)
--- =====================================================================
+**Campos mínimos del ajuste:**
 
-CREATE TABLE payments (
-    id CHAR(36) PRIMARY KEY,
-    company_id CHAR(36) NOT NULL,
-    provider_company_id CHAR(36) NOT NULL,
-    purchase_id CHAR(36) NULL,
+* `adjustment_of_time_entry_id`  
+* `delta_minutes`  
+* `reason`  
+* `adjusted_by_user_id`  
+* `adjusted_at`
 
-    status ENUM('pending','completed','reversed')
-        NOT NULL DEFAULT 'pending',
+**Cálculo total:**
 
-    payment_date DATE NOT NULL,
-    amount DECIMAL(15,4) NOT NULL,
+```
+SUM(job_time_entries.minutes) + SUM(job_time_adjustments.delta_minutes)
+```
 
-    completed_at DATETIME(6) NULL,
-    reversed_at DATETIME(6) NULL,
-    reversed_reason TEXT NULL,
+---
 
-    deleted_at DATETIME(6),
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+# **4.3 SALES**
 
-    INDEX (company_id),
-    INDEX (provider_company_id),
-    INDEX (purchase_id),
-    INDEX (status)
-);
+## **Estados**
 
--- =====================================================================
--- 8) ADJUSTMENTS (Ajustes operativos genéricos)
--- =====================================================================
+* `draft`  
+* `confirmed`  
+* `cancelled` (terminal)
 
-CREATE TABLE adjustments (
-    id CHAR(36) PRIMARY KEY,
-    company_id CHAR(36) NOT NULL,
+## **Transiciones válidas**
 
-    target_entity_type VARCHAR(100) NOT NULL,
-    target_entity_id CHAR(36) NOT NULL,
+* `draft → confirmed`  
+* `draft → cancelled`  
+* `confirmed → cancelled` (si no tiene invoice o receipts activos)
 
-    status ENUM('draft','applied','cancelled') NOT NULL DEFAULT 'draft',
+## **Precondiciones para `draft → confirmed`**
 
-    reason TEXT NOT NULL,
-    applied_at DATETIME(6) NULL,
+* company activa  
+* client\_company\_id válido  
+* items \> 0  
+* moneda definida  
+* fecha operativa
 
-    deleted_at DATETIME(6),
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL,
+---
 
-    INDEX (company_id),
-    INDEX (target_entity_type),
-    INDEX (target_entity_id)
-);
+# **4.4 PURCHASES**
 
--- =====================================================================
--- FIN DEL SCHEMA FASE 2
--- =====================================================================
+Simétrico a Sales:
+
+* `draft → confirmed`  
+* `draft → cancelled`  
+* `confirmed → cancelled` (sin pagos ni documentos activos)
+
+---
+
+# **4.5 QUOTES (PRESUPUESTOS)**
+
+## **Estados**
+
+* `draft`  
+* `sent`  
+* `accepted`  
+* `rejected`  
+* `expired` (terminal)
+
+## **Transiciones**
+
+* `draft → sent`  
+* `sent → accepted`  
+* `sent → rejected`  
+* `sent → expired`
+
+Accepted → terminal lógico (no vuelve atrás)
+
+---
+
+# **4.6 INVOICES (Documento operativo)**
+
+## **Estados**
+
+* `draft`  
+* `issued`  
+* `voided`
+
+## **Transiciones válidas**
+
+* `draft → issued`  
+* `draft → voided`  
+* `issued → voided` (sin receipts completed)
+
+---
+
+# **4.7 RECEIPTS (Cobros)**
+
+## **Estados**
+
+* `pending`  
+* `completed`  
+* `reversed`
+
+## **Transiciones válidas**
+
+* `pending → completed`  
+* `pending → reversed`  
+* `completed → reversed`
+
+---
+
+# **4.8 PAYMENTS (Pagos)**
+
+Simétrico a receipts.
+
+---
+
+# **4.9 ADJUSTMENTS (Ajustes operativos)**
+
+Se usan para:
+
+* corregir tiempos reales  
+* corregir datos históricos relevantes  
+* sin reescribir el registro original
+
+Estados:
+
+* `draft`  
+* `applied` (terminal)  
+* `cancelled`
+
+---
+
+# **🧱 5\. VALIDACIONES CRUZADAS DEL ERP**
+
+### **5.1 Dependencias inconsistentes (bloquea)**
+
+Ejemplos:
+
+* invoice con receipt → no se puede voided  
+* sale con invoice → no se puede cancelar  
+* purchase con payment → no se puede cancelar
+
+### **5.2 Temporalidad**
+
+No se puede reescribir:
+
+* fechas reales  
+* eventos pasados  
+* operaciones ya emitidas/confirmadas
+
+### **5.3 Empresas inactivas**
+
+Si `company.status != active`:
+
+* no se pueden crear operaciones nuevas  
+* solo lectura y archivado
+
+---
+
+# **🧱 6\. AUDITORÍA OBLIGATORIA**
+
+Cada transición o cambio relevante genera:
+
+* actor  
+* timestamp  
+* estado anterior / nuevo  
+* payload de cambios  
+* motivo (si corresponde)  
+* ids referenciados  
+* no-op si corresponde
+
+Cambios temporales SIEMPRE auditan valor anterior y nuevo.
+
+---
+
+# **🧱 7\. EVENTOS OPERATIVOS**
+
+(Base para ACCCORE)
+
+FASE 2 genera eventos como:
+
+* `job_started`  
+* `job_paused`  
+* `job_completed`  
+* `job_cancelled`  
+* `schedule_adjusted`  
+* `sale_confirmed`  
+* `invoice_issued`  
+* `receipt_completed`  
+* `payment_completed`  
+* `correction_applied`  
+* etc.
+
+Estos eventos:
+
+* son inmutables  
+* no se modifican  
+* son el insumo de ACCCORE  
+* no contienen lógica contable
+
+---
+
+# **🧱 8\. RELACIÓN FASE 2 → FASE 3**
+
+FASE 2:
+
+* registra hechos brutos  
+* mantiene historia limpia  
+* garantiza trazabilidad completa
+
+FASE 3:
+
+* lee eventos  
+* genera asientos  
+* aplica fiscalidad y reglas contables
+
+FASE 2 NO incluye:
+
+* cuentas contables  
+* IVA  
+* percepciones  
+* amortización  
+* resultados  
+* cashflow contable
+
+---
