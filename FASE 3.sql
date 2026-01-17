@@ -1,295 +1,188 @@
 -- =====================================================================
---  SISA - CORE PLATFORM (FASE 1)
---  SCHEMA COMPLETO • VERSION FINAL Y CONGELADA
+--  SISA - ACCCORE (FASE 3)
+--  SCHEMA CONTABLE • VERSION FINAL Y CONGELADA
 -- =====================================================================
-
--- ============================================================
--- 0) EXTENSIONES / CONFIG
--- ============================================================
 
 SET NAMES utf8mb4;
 SET time_zone = "+00:00";
 
+
 -- =====================================================================
--- 1) USERS
+-- 1) ACCOUNTING_ACCOUNTS (Plan de Cuentas)
 -- =====================================================================
 
-CREATE TABLE users (
+CREATE TABLE accounting_accounts (
     id CHAR(36) PRIMARY KEY,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
+    company_id CHAR(36) NOT NULL,
 
-    status ENUM('pending','active','locked','disabled','deleted') NOT NULL DEFAULT 'pending',
-    locked_until DATETIME(6) NULL,
-    email_verified_at DATETIME(6) NULL,
-    deleted_at DATETIME(6) NULL,
+    code VARCHAR(50) NOT NULL,           -- ej: 1.1.4
+    name VARCHAR(255) NOT NULL,          -- Créditos por Ventas
+    type ENUM('asset','liability','equity','income','expense') NOT NULL,
 
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL
-);
+    parent_account_id CHAR(36) NULL,
 
--- =====================================================================
--- 2) USER_SECURITY_EVENTS
--- =====================================================================
-
-CREATE TABLE user_security_events (
-    id CHAR(36) PRIMARY KEY,
-    user_id CHAR(36) NULL,
-    email VARCHAR(255) NOT NULL,
-    ip_address VARCHAR(100),
-    user_agent VARCHAR(500),
-
-    event_type ENUM(
-        'login_success',
-        'login_failed',
-        'password_reset_requested',
-        'password_reset_used',
-        'email_verification_sent',
-        'email_verified',
-        'auto_lock',
-        'auto_unlock',
-        'manual_lock',
-        'manual_unlock'
-    ) NOT NULL,
-
-    metadata JSON NULL,
-    created_at DATETIME(6) NOT NULL,
-
-    INDEX (email),
-    INDEX (user_id),
-    INDEX (event_type),
-    INDEX (created_at)
-);
-
--- =====================================================================
--- 3) USER_ROLES (roles globales)
--- =====================================================================
-
-CREATE TABLE user_roles (
-    id CHAR(36) PRIMARY KEY,
-    user_id CHAR(36) NOT NULL,
-    role ENUM('superadmin','system') NOT NULL,
-    
-    status ENUM('active','deleted') NOT NULL DEFAULT 'active',
-    deleted_at DATETIME(6) NULL,
-
-    created_at DATETIME(6),
-    updated_at DATETIME(6),
-
-    INDEX (user_id)
-);
-
--- =====================================================================
--- 4) USER_SESSIONS
--- =====================================================================
-
-CREATE TABLE user_sessions (
-    id CHAR(36) PRIMARY KEY,
-    user_id CHAR(36) NOT NULL,
-    active_company_id CHAR(36) NULL,
-
-    refresh_token VARCHAR(255) NOT NULL UNIQUE,
-    ip_address VARCHAR(100),
-    user_agent VARCHAR(500),
-
-    expires_at DATETIME(6) NOT NULL,
-    revoked_at DATETIME(6) NULL,
+    status ENUM('active','archived') NOT NULL DEFAULT 'active',
+    archived_at DATETIME(6) NULL,
 
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
 
-    INDEX (user_id),
-    INDEX (active_company_id),
-    INDEX (expires_at)
+    UNIQUE KEY uq_company_code (company_id, code),
+    INDEX (company_id),
+    INDEX (type),
+    INDEX (parent_account_id)
 );
 
--- =====================================================================
--- 5) COMPANIES
--- =====================================================================
-
-CREATE TABLE companies (
-    id CHAR(36) PRIMARY KEY,
-    legal_name VARCHAR(255) NOT NULL,
-    trade_name VARCHAR(255),
-    tax_id VARCHAR(50),
-
-    status ENUM('active','inactive','archived','deleted') NOT NULL DEFAULT 'active',
-    deleted_at DATETIME(6),
-
-    created_at DATETIME(6) NOT NULL,
-    updated_at DATETIME(6) NOT NULL
-);
 
 -- =====================================================================
--- 6) COMPANY_INVITATIONS
+-- 2) ACCOUNTING_PERIODS (Periodos contables)
 -- =====================================================================
 
-CREATE TABLE company_invitations (
+CREATE TABLE accounting_periods (
     id CHAR(36) PRIMARY KEY,
     company_id CHAR(36) NOT NULL,
-    email VARCHAR(255) NOT NULL,
-    role ENUM('owner','admin','member','viewer') NOT NULL,
-    token CHAR(36) NOT NULL,
 
-    status ENUM('pending','accepted','rejected','expired','revoked') NOT NULL,
-    expires_at DATETIME(6),
-    accepted_at DATETIME(6),
+    period_year INT NOT NULL,            -- Año: 2026
+    period_month INT NOT NULL,           -- Mes: 1..12
+
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+
+    status ENUM('open','closed','reopened') NOT NULL DEFAULT 'open',
+
+    closed_at DATETIME(6) NULL,
+    reopened_at DATETIME(6) NULL,
 
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
 
+    UNIQUE KEY uq_period (company_id, period_year, period_month),
     INDEX (company_id),
-    INDEX (email),
-    INDEX (token)
-);
-
--- =====================================================================
--- 7) COMPANY_MEMBERSHIPS
--- =====================================================================
-
-CREATE TABLE company_memberships (
-    id CHAR(36) PRIMARY KEY,
-    company_id CHAR(36) NOT NULL,
-    user_id CHAR(36) NOT NULL,
-
-    status ENUM('active','invited','revoked','left','deleted') NOT NULL,
-    deleted_at DATETIME(6),
-
-    created_at DATETIME(6),
-    updated_at DATETIME(6),
-
-    INDEX (company_id),
-    INDEX (user_id),
     INDEX (status)
 );
 
--- =====================================================================
--- 8) MEMBERSHIP_ROLES
--- =====================================================================
-
-CREATE TABLE membership_roles (
-    id CHAR(36) PRIMARY KEY,
-    membership_id CHAR(36) NOT NULL,
-    role ENUM('owner','admin','member','viewer') NOT NULL,
-
-    status ENUM('active','deleted') NOT NULL DEFAULT 'active',
-    deleted_at DATETIME(6),
-
-    created_at DATETIME(6),
-    updated_at DATETIME(6),
-
-    INDEX (membership_id),
-    INDEX (role)
-);
 
 -- =====================================================================
--- 9) COMPANY_SETTINGS
+-- 3) ACCOUNTING_EVENTS (Eventos procesables)
 -- =====================================================================
 
-CREATE TABLE company_settings (
+-- Estos NO se crean manualmente.
+-- Son copias estructuradas de eventos ERP ya cerrados.
+
+CREATE TABLE accounting_events (
     id CHAR(36) PRIMARY KEY,
     company_id CHAR(36) NOT NULL,
 
-    setting_key VARCHAR(100) NOT NULL,
-    setting_value TEXT NULL,
+    source_event_type VARCHAR(100) NOT NULL,    -- ej: invoice_issued
+    source_event_id CHAR(36) NOT NULL,          -- id ERP
+    event_date DATE NOT NULL,                   -- fecha operativa
 
-    status ENUM('active','deleted') NOT NULL DEFAULT 'active',
-    deleted_at DATETIME(6),
+    processed TINYINT(1) NOT NULL DEFAULT 0,    -- idempotencia
+    processed_at DATETIME(6) NULL,
 
-    created_at DATETIME(6),
-    updated_at DATETIME(6),
-
-    INDEX (company_id),
-    INDEX (setting_key)
-);
-
--- =====================================================================
--- 10) FILES
--- =====================================================================
-
-CREATE TABLE files (
-    id CHAR(36) PRIMARY KEY,
-    company_id CHAR(36) NOT NULL,
-    user_id CHAR(36) NOT NULL,
-
-    mime_type VARCHAR(200),
-    size INT,
-    path VARCHAR(500),
-
-    status ENUM('active','archived','deleted') NOT NULL DEFAULT 'active',
-    deleted_at DATETIME(6),
-
-    created_at DATETIME(6),
-
-    INDEX (company_id),
-    INDEX (user_id)
-);
-
--- =====================================================================
--- 11) FILE_LINKS
--- =====================================================================
-
-CREATE TABLE file_links (
-    id CHAR(36) PRIMARY KEY,
-    file_id CHAR(36) NOT NULL,
-
-    entity_type VARCHAR(100) NOT NULL,
-    entity_id CHAR(36) NOT NULL,
-
-    status ENUM('active','deleted') NOT NULL DEFAULT 'active',
-    deleted_at DATETIME(6),
-
-    created_at DATETIME(6),
-
-    INDEX (file_id),
-    INDEX (entity_type),
-    INDEX (entity_id)
-);
-
--- =====================================================================
--- 12) AUDIT_LOG
--- =====================================================================
-
-CREATE TABLE audit_log (
-    id CHAR(36) PRIMARY KEY,
-    company_id CHAR(36) NULL,
-    user_id CHAR(36) NULL,
-
-    entity_type VARCHAR(100) NOT NULL,
-    entity_id CHAR(36) NOT NULL,
-
-    action ENUM('create','update','delete','archive','restore','security') NOT NULL,
-    snapshot_before JSON,
-    snapshot_after JSON,
-    metadata JSON,
+    payload JSON NOT NULL,                      -- datos necesarios
+    metadata JSON NULL,
 
     created_at DATETIME(6) NOT NULL,
 
+    UNIQUE KEY uq_event_unique (company_id, source_event_type, source_event_id),
     INDEX (company_id),
-    INDEX (user_id),
-    INDEX (entity_type),
-    INDEX (entity_id),
-    INDEX (action)
+    INDEX (source_event_type),
+    INDEX (event_date),
+    INDEX (processed)
 );
 
+
 -- =====================================================================
--- 13) USER_LEGAL_ACCEPTANCES
+-- 4) JOURNAL_ENTRIES (Asientos contables)
 -- =====================================================================
 
-CREATE TABLE user_legal_acceptances (
+CREATE TABLE journal_entries (
     id CHAR(36) PRIMARY KEY,
-    user_id CHAR(36) NOT NULL,
+    company_id CHAR(36) NOT NULL,
+    accounting_period_id CHAR(36) NOT NULL,
 
-    document_type ENUM('tos','privacy','cookies') NOT NULL,
-    document_version VARCHAR(50) NOT NULL,
-    accepted_at DATETIME(6) NOT NULL,
+    event_id CHAR(36) NOT NULL,        -- vínculo 1 a 1 con evento procesado
 
-    created_at DATETIME(6),
+    entry_date DATE NOT NULL,          -- fecha contable
 
-    INDEX (user_id),
-    INDEX (document_type)
+    status ENUM('posted','reversed') NOT NULL DEFAULT 'posted',
+
+    reversed_by_entry_id CHAR(36) NULL, -- asiento espejo
+
+    created_at DATETIME(6) NOT NULL,
+    INDEX (company_id),
+    INDEX (accounting_period_id),
+    INDEX (event_id),
+    INDEX (status),
+    INDEX (entry_date)
 );
 
+
 -- =====================================================================
--- FIN DEL SCHEMA FASE 1
+-- 5) JOURNAL_LINES (Debe / Haber)
+-- =====================================================================
+
+CREATE TABLE journal_lines (
+    id CHAR(36) PRIMARY KEY,
+    journal_entry_id CHAR(36) NOT NULL,
+    account_id CHAR(36) NOT NULL,
+
+    side ENUM('debit','credit') NOT NULL,
+    amount DECIMAL(15,4) NOT NULL,
+
+    currency VARCHAR(10) NOT NULL DEFAULT 'ARS',
+
+    created_at DATETIME(6) NOT NULL,
+
+    INDEX (journal_entry_id),
+    INDEX (account_id),
+    INDEX (side)
+);
+
+
+-- =====================================================================
+-- 6) ACCOUNTING_REJECTIONS (Rechazos contables)
+-- =====================================================================
+
+CREATE TABLE accounting_rejections (
+    id CHAR(36) PRIMARY KEY,
+    event_id CHAR(36) NOT NULL,
+    company_id CHAR(36) NOT NULL,
+
+    reason TEXT NOT NULL,
+    rejected_at DATETIME(6) NOT NULL,
+
+    INDEX (event_id),
+    INDEX (company_id)
+);
+
+
+-- =====================================================================
+-- 7) LEDGER_BALANCES (Mayor contable — materializado)
+--      *estructura derivada*
+-- =====================================================================
+
+CREATE TABLE ledger_balances (
+    id CHAR(36) PRIMARY KEY,
+    company_id CHAR(36) NOT NULL,
+    accounting_period_id CHAR(36) NOT NULL,
+    account_id CHAR(36) NOT NULL,
+
+    opening_balance DECIMAL(15,4) NOT NULL DEFAULT 0,
+    period_debit DECIMAL(15,4) NOT NULL DEFAULT 0,
+    period_credit DECIMAL(15,4) NOT NULL DEFAULT 0,
+    closing_balance DECIMAL(15,4) NOT NULL DEFAULT 0,
+
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+
+    UNIQUE KEY uq_balance (company_id, accounting_period_id, account_id),
+    INDEX (account_id),
+    INDEX (accounting_period_id)
+);
+
+
+-- =====================================================================
+-- FIN DEL SCHEMA FASE 3
 -- =====================================================================
