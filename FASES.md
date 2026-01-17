@@ -1,38 +1,61 @@
+📐 MAPA MAESTRO DE FASES (NUMERADAS)
+FASE 0 — Fundación técnica
+
+Base mínima para que el sistema exista, arranque y sea observable.
+
+FASE 1 — Core Platform (Identidad & Acceso)
+Usuarios, empresas, membresías y permisos.
+
+FASE 2 — Operación / ERP Base
+Jobs, clientes, proveedores, archivos, trazabilidad operativa.
+
+FASE 3 — Contabilidad Núcleo (ACCCORE)
+Verdad económica inmutable, independiente del país.
+
+FASE 4 — Fiscal / Impositiva
+Impuestos, documentos legales, cumplimiento normativo.
+
+FASE 5 — Offline / Sync / Eventos
+Offline-first, colas, conflictos y sincronización segura.
+
+FASE 6 — Analítica / Control
+KPIs, costos, rentabilidad, tableros.
+
+FASE 7 — Integraciones
+APIs, bancos, fiscal, import/export.
+
+FASE 8 — Hardening / Escala
+Seguridad, performance, resiliencia, multi-tenant real.
+
+
+
+
+
+
+
+
+
+
 🧱 1) NÚCLEO (Core Platform)
 📌 Identidad, seguridad, multiempresa, auditoría, archivos.
 
 Es el cimiento obligatorio.
 
 Incluye:
-
 Users
-
 User Security Events
-
 User Sessions
-
 Companies
-
 Memberships
-
 Roles
-
 Legal Acceptances
-
 Audit Log
-
 Company Settings
-
 Files + File Links
-
 Instalación inicial
-
 Login / Logout
-
 Regla 4equim
-
 Estados lógicos
-
 Multiempresa real
 
 👉 Sin esto, no existe SISA.
@@ -45,29 +68,17 @@ Este módulo SIEMPRE VA PRIMERO.
 📌 Registra hechos reales, NO los interpreta contablemente.
 
 Acá va todo lo operativo del día a día:
-
 Jobs (órdenes de trabajo)
-
 Job Time Entries
-
 Job Checklist Items
-
 Quotes
-
 Sales
-
 Purchases
-
 Invoices
-
 Receipts
-
 Payments
-
 Adjustments
-
 Estados, lifecycles, auditorías
-
 Validaciones cruzadas ERP
 
 👉 Fase 2 produce eventos operativos inmutables.
@@ -84,27 +95,16 @@ Si lo invertís → te explota la consistencia temporal.
 Incluye:
 
 Plan de cuentas
-
 Asientos contables
-
 Centros de costo
-
 IVA
-
 Percepciones / Retenciones
-
 Cierres contables
-
 Mayor analítico
-
 Balance, PyG
-
 Devengamientos
-
 Contabilidad por empresa
-
 Auditoría contable
-
 Reglas fiscales
 
 👉 Contabilidad NO puede existir antes del ERP.
@@ -113,17 +113,14 @@ SIEMPRE debe hacerse desde eventos auditables.
 
 🎯 Resumen brutalmente claro
 ✔ 1) CORE
-
 Fundación del sistema
 (lo que hace posible todo)
 
 ✔ 2) NEGOCIO / ERP
-
 Registra hechos
 (no interpreta nada)
 
 ✔ 3) CONTABILIDAD
-
 Interpreta hechos → genera asientos
 
 🎯 Orden obligatorio

@@ -9,17 +9,12 @@
 Este módulo define **qué puede hacer cada usuario** dentro del sistema, de forma:
 
 * granular
-
 * auditable
-
 * reproducible
-
 * independiente del negocio
-
 * independiente de la contabilidad
 
 Los permisos finos **NO forman parte del Core**, **NO pertenecen al ERP**, y **NO son contabilidad**.
-
 Son una **capa transversal**, apoyada sobre el Core.
 
 ---
@@ -34,9 +29,7 @@ Son una **capa transversal**, apoyada sobre el Core.
 ### **Dependencias**
 
 * Depende de: Core Platform
-
 * NO depende de: ERP, Contabilidad
-
 * Es requerido por: ERP y Contabilidad
 
 ---
@@ -46,11 +39,8 @@ Son una **capa transversal**, apoyada sobre el Core.
 ### **1️⃣ Separación total de responsabilidades**
 
 * Core → identidad y pertenencia
-
 * Permisos Finos → autorización
-
 * ERP → lógica operativa
-
 * Contabilidad → interpretación financiera
 
 Nunca se mezclan.
@@ -62,9 +52,7 @@ Nunca se mezclan.
 Si una acción no tiene permiso explícito:
 
 * está prohibida
-
 * no se infiere
-
 * no se hereda implícitamente
 
 ---
@@ -74,9 +62,7 @@ Si una acción no tiene permiso explícito:
 Dado:
 
 * usuario
-
 * empresa
-
 * acción
 
 👉 el resultado de autorización es **siempre el mismo**.
@@ -88,9 +74,7 @@ Dado:
 Toda decisión relevante de autorización:
 
 * puede auditarse
-
 * puede reproducirse
-
 * puede explicarse
 
 ---
@@ -106,39 +90,24 @@ Un permiso representa **una acción concreta** del sistema.
 Ejemplos:
 
 * `jobs.view`
-
 * `jobs.create`
-
 * `jobs.update`
-
 * `jobs.complete`
-
 * `jobs.cancel`
-
 * `invoices.issue`
-
 * `invoices.void`
-
 * `receipts.complete`
-
 * `payments.execute`
-
 * `accounting.view_reports`
-
 * `accounting.post_entries`
-
 * `settings.manage`
-
 * `users.invite`
 
 #### **Reglas**
 
 * Son atómicos
-
 * No dependen del rol
-
 * No dependen de la UI
-
 * No contienen lógica
 
 ---
@@ -148,17 +117,11 @@ Ejemplos:
 Agrupan permisos por dominio funcional:
 
 * Jobs
-
 * Sales
-
 * Purchases
-
 * Invoices
-
 * Accounting
-
 * Configuration
-
 * Security
 
 Solo sirven para organización y UI.
@@ -172,23 +135,16 @@ Un rol fino es **un conjunto de permisos**, no una jerarquía.
 Ejemplos:
 
 * `erp_operator`
-
 * `erp_manager`
-
 * `finance_viewer`
-
 * `finance_operator`
-
 * `accounting_admin`
-
 * `company_admin_extended`
 
 #### **Reglas**
 
 * Un rol **no hereda** de otro
-
 * Los permisos se asignan explícitamente
-
 * Un rol puede cambiar sin afectar al Core
 
 ---
