@@ -338,14 +338,14 @@ audit\_log (
 
 (Normalizado y completo)
 
-user\_legal\_acceptances (  
+user_legal_acceptances (  
   id CHAR(36) PRIMARY KEY,  
-  user\_id CHAR(36) NOT NULL,  
-  document\_type ENUM('tos','privacy','cookies') NOT NULL,  
-  document\_version VARCHAR(50) NOT NULL,  
-  accepted\_at DATETIME(6) NOT NULL,
+  user_id CHAR(36) NOT NULL,  
+  document_type ENUM('tos','privacy','cookies') NOT NULL,  
+  document_version VARCHAR(50) NOT NULL,  
+  accepted_at DATETIME(6) NOT NULL,
 
-  created\_at DATETIME(6)  
+  created_at DATETIME(6)  
 )
 
 ---

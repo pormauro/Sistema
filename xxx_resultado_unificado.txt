@@ -1,4 +1,40 @@
-===== ARCHIVO: Esqueleto Sistema SISA.md =====
+===== ARCHIVO: Esqueleto Fases.md =====
+📐 MAPA MAESTRO DE FASES (NUMERADAS)
+FASE 0 — Fundación técnica
+
+Base mínima para que el sistema exista, arranque y sea observable.
+
+FASE 1 — Core Platform (Identidad & Acceso)
+Usuarios, empresas, membresías y permisos.
+
+FASE 2 — Operación / ERP Base
+Jobs, clientes, proveedores, archivos, trazabilidad operativa.
+
+FASE 3 — Contabilidad Núcleo (ACCCORE)
+Verdad económica inmutable, independiente del país.
+
+FASE 4 — Fiscal / Impositiva
+Impuestos, documentos legales, cumplimiento normativo.
+
+FASE 5 — Offline / Sync / Eventos
+Offline-first, colas, conflictos y sincronización segura.
+
+FASE 6 — Analítica / Control
+KPIs, costos, rentabilidad, tableros.
+
+FASE 7 — Integraciones
+APIs, bancos, fiscal, import/export.
+
+FASE 8 — Hardening / Escala
+Seguridad, performance, resiliencia, multi-tenant real.
+
+
+
+
+
+
+
+
 
 
 # **🧱 FASE 0 — FUNDACIÓN TÉCNICA**
@@ -233,42 +269,6 @@
 
 
 ===== ARCHIVO: FASES.md =====
-📐 MAPA MAESTRO DE FASES (NUMERADAS)
-FASE 0 — Fundación técnica
-
-Base mínima para que el sistema exista, arranque y sea observable.
-
-FASE 1 — Core Platform (Identidad & Acceso)
-Usuarios, empresas, membresías y permisos.
-
-FASE 2 — Operación / ERP Base
-Jobs, clientes, proveedores, archivos, trazabilidad operativa.
-
-FASE 3 — Contabilidad Núcleo (ACCCORE)
-Verdad económica inmutable, independiente del país.
-
-FASE 4 — Fiscal / Impositiva
-Impuestos, documentos legales, cumplimiento normativo.
-
-FASE 5 — Offline / Sync / Eventos
-Offline-first, colas, conflictos y sincronización segura.
-
-FASE 6 — Analítica / Control
-KPIs, costos, rentabilidad, tableros.
-
-FASE 7 — Integraciones
-APIs, bancos, fiscal, import/export.
-
-FASE 8 — Hardening / Escala
-Seguridad, performance, resiliencia, multi-tenant real.
-
-
-
-
-
-
-
-
 
 
 🧱 1) NÚCLEO (Core Platform)
@@ -583,7 +583,43 @@ Proyecto SISA — Core ERP
 
 
 ===== ARCHIVO: xxx_resultado_unificado.txt =====
-===== ARCHIVO: Esqueleto Sistema SISA.md =====
+===== ARCHIVO: Esqueleto Fases.md =====
+📐 MAPA MAESTRO DE FASES (NUMERADAS)
+FASE 0 — Fundación técnica
+
+Base mínima para que el sistema exista, arranque y sea observable.
+
+FASE 1 — Core Platform (Identidad & Acceso)
+Usuarios, empresas, membresías y permisos.
+
+FASE 2 — Operación / ERP Base
+Jobs, clientes, proveedores, archivos, trazabilidad operativa.
+
+FASE 3 — Contabilidad Núcleo (ACCCORE)
+Verdad económica inmutable, independiente del país.
+
+FASE 4 — Fiscal / Impositiva
+Impuestos, documentos legales, cumplimiento normativo.
+
+FASE 5 — Offline / Sync / Eventos
+Offline-first, colas, conflictos y sincronización segura.
+
+FASE 6 — Analítica / Control
+KPIs, costos, rentabilidad, tableros.
+
+FASE 7 — Integraciones
+APIs, bancos, fiscal, import/export.
+
+FASE 8 — Hardening / Escala
+Seguridad, performance, resiliencia, multi-tenant real.
+
+
+
+
+
+
+
+
 
 
 # **🧱 FASE 0 — FUNDACIÓN TÉCNICA**
@@ -818,42 +854,6 @@ Proyecto SISA — Core ERP
 
 
 ===== ARCHIVO: FASES.md =====
-📐 MAPA MAESTRO DE FASES (NUMERADAS)
-FASE 0 — Fundación técnica
-
-Base mínima para que el sistema exista, arranque y sea observable.
-
-FASE 1 — Core Platform (Identidad & Acceso)
-Usuarios, empresas, membresías y permisos.
-
-FASE 2 — Operación / ERP Base
-Jobs, clientes, proveedores, archivos, trazabilidad operativa.
-
-FASE 3 — Contabilidad Núcleo (ACCCORE)
-Verdad económica inmutable, independiente del país.
-
-FASE 4 — Fiscal / Impositiva
-Impuestos, documentos legales, cumplimiento normativo.
-
-FASE 5 — Offline / Sync / Eventos
-Offline-first, colas, conflictos y sincronización segura.
-
-FASE 6 — Analítica / Control
-KPIs, costos, rentabilidad, tableros.
-
-FASE 7 — Integraciones
-APIs, bancos, fiscal, import/export.
-
-FASE 8 — Hardening / Escala
-Seguridad, performance, resiliencia, multi-tenant real.
-
-
-
-
-
-
-
-
 
 
 🧱 1) NÚCLEO (Core Platform)
@@ -3389,7 +3389,7 @@ Todas:
 
 ### **Para `planned → in_progress`**
 
-* **start\_datetime obligatorio**  
+* transición **automática** al crear el primer `job_time_entry`  
 * responsable asignado  
 * tipo de job definido  
 * empresa activa
@@ -3408,6 +3408,31 @@ Debe existir evidencia:
 * desde `planned`: libre con motivo  
 * desde `in_progress`: permitido con evidencia \+ motivo  
   (no se borra lo ya ejecutado)
+
+## **Regla dura: actividad real vs estado**
+
+* la creación del **primer `job_time_entry`** fuerza el estado a `in_progress`  
+* no existe trabajo real sin job activo  
+
+---
+
+## **Checklist — ejecución real (modelo aprobado)**
+
+El checklist **no existe en abstracto**.  
+Existe cuando alguien lo ejecuta en un tramo real de trabajo.
+
+```text
+job_checklist_execution
+- checklist_item_id
+- job_time_entry_id
+- executed_by_user_id
+- executed_at
+```
+
+Reglas:
+
+* un mismo item puede ejecutarse múltiples veces  
+* cada ejecución queda vinculada a un `job_time_entry` real  
 
 ---
 
@@ -3441,6 +3466,32 @@ Se corrige agregando historia.
 
 ❌ No se puede tocar  
 ✔ solo ajustes mediante eventos: `job_time_correction_applied`
+
+## **Corrección contable de tiempos (modelo definitivo)**
+
+**Regla dura:**
+
+* `job_time_entries` **NO se editan ni se eliminan**  
+* toda corrección se registra como **evento de ajuste**
+
+**Modelo lógico:**
+
+* `job_time_entries` → evento original  
+* `job_time_adjustments` → correcciones posteriores
+
+**Campos mínimos del ajuste:**
+
+* `adjustment_of_time_entry_id`  
+* `delta_minutes`  
+* `reason`  
+* `adjusted_by_user_id`  
+* `adjusted_at`
+
+**Cálculo total:**
+
+```
+SUM(job_time_entries.minutes) + SUM(job_time_adjustments.delta_minutes)
+```
 
 ---
 
@@ -3647,7 +3698,6 @@ FASE 2 NO incluye:
 * cashflow contable
 
 ---
-
 
 
 ===== ARCHIVO: fases\📘 FASE 3 - ACCCORE (CONTABILIDAD).md =====
@@ -4118,6 +4168,18 @@ Este motor es el **corazón de ACCCORE**.
 4. **Nada se edita, todo se deriva**  
 5. **El pasado no se corrige**  
 6. **Toda traducción es auditable**
+
+---
+
+## **🧱 POLÍTICA DE MIGRACIÓN HISTÓRICA (EVENTO DE APERTURA)**
+
+ACCCORE **no reproduce historia**: arranca desde un evento de apertura que fija la frontera contable.
+
+### **Reglas duras**
+
+* La migración es **irreversible**: una vez ejecutado el evento de apertura, **no se revierte ni se rehace**.  
+* No se permite imputar eventos ERP **con fecha anterior al corte de migración**.  
+* Los documentos externos son **evidencia**, nunca **fuente de verdad contable interna**.  
 
 ---
 
@@ -4714,7 +4776,6 @@ Si no se puede trazar, el dato es inválido.
 * ❌ Ocultar movimientos  
 * ❌ Calcular balances desde ERP  
   ---
-
 
 
 ===== ARCHIVO: fases\📘 FASE 3 — ACCCORE (CONTABILIDAD) DOCUMENTO COMPLEMENTARIO.md =====
